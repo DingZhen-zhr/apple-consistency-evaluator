@@ -1,4 +1,7 @@
 import { analyzeFiles, buildReportHtml } from "./analyze.js";
+import { computeScatterAxes } from "./metrics.js";
+import { loadUserPoints, addUserPoint, removeUserPoint } from "./storage.js";
+import { createScatterChart } from "./scatter-chart.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -88,6 +91,39 @@ async function analyze() {
 
   renderResult(result);
 
+  const axes = computeScatterAxes(result);
+  let thumbDataUrl = "";
+  if (payload.first_bitmap) {
+    try {
+      thumbDataUrl = await bitmapToThumbDataUrl(payload.first_bitmap);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+  const label =
+    files.length === 1 ? files[0].name || "截图" : `${files.length} 张：${files[0]?.name || "截图"}…`;
+  try {
+    addUserPoint({
+      id: newUserPointId(),
+      type: "user",
+      x: axes.x,
+      y: axes.y,
+      label,
+      thumbDataUrl,
+      overall_score: result.overall_score,
+      createdAt: new Date().toISOString(),
+      resultSummary: {
+        inAppleZone: axes.inAppleZone,
+        xLabel: axes.xLabel,
+        yLabel: axes.yLabel,
+      },
+    });
+    scatterChart.setUserPoints(loadUserPoints());
+  } catch (err) {
+    console.warn(err);
+    alert(err?.message || String(err));
+  }
+
   // Setup report viewer
   $("btnReport").disabled = false;
   $("btnReport").onclick = async () => {
@@ -136,5 +172,63 @@ $("btn").addEventListener("click", () => {
 
 $("closeDialog").addEventListener("click", () => {
   $("reportDialog").close();
+});
+
+function newUserPointId() {
+  return crypto.randomUUID?.() || `u-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** @param {ImageBitmap} bitmap */
+async function bitmapToThumbDataUrl(bitmap, maxW = 88) {
+  const w = bitmap.width;
+  const h = bitmap.height;
+  const scale = Math.min(1, maxW / Math.max(w, h));
+  const tw = Math.max(1, Math.round(w * scale));
+  const th = Math.max(1, Math.round(h * scale));
+  const c =
+    typeof OffscreenCanvas !== "undefined"
+      ? new OffscreenCanvas(tw, th)
+      : Object.assign(document.createElement("canvas"), { width: tw, height: th });
+  const ctx = c.getContext("2d");
+  if (!ctx) return "";
+  ctx.drawImage(bitmap, 0, 0, tw, th);
+  if (typeof c.convertToBlob === "function") {
+    const blob = await c.convertToBlob({ type: "image/jpeg", quality: 0.62 });
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(blob);
+    });
+  }
+  return c.toDataURL("image/jpeg", 0.62);
+}
+
+const scatterMount = $("scatterMount");
+const btnDeletePoint = $("btnDeletePoint");
+const scatterSelectionHint = $("scatterSelectionHint");
+
+const scatterChart = createScatterChart(scatterMount, {
+  onSelectionChange: (sel) => {
+    if (sel.kind === "user") {
+      btnDeletePoint.disabled = false;
+      scatterSelectionHint.textContent = "已选中：我的上传（可删除）";
+    } else if (sel.kind === "reference") {
+      btnDeletePoint.disabled = true;
+      scatterSelectionHint.textContent = "已选中：苹果参考点（不可删除）";
+    } else {
+      btnDeletePoint.disabled = true;
+      scatterSelectionHint.textContent = "";
+    }
+  },
+});
+scatterChart.setUserPoints(loadUserPoints());
+
+btnDeletePoint.addEventListener("click", () => {
+  const sel = scatterChart.getSelection();
+  if (sel.kind !== "user" || !sel.id) return;
+  const next = removeUserPoint(sel.id);
+  scatterChart.setUserPoints(next);
+  scatterChart.clearSelection("none");
 });
 

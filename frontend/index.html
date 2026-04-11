@@ -27,7 +27,22 @@
           <button id="btnReport" class="btn secondary" disabled>打开 HTML 报告</button>
           <button id="btnJson" class="btn secondary" disabled>下载 result.json</button>
         </div>
-        <div id="hint" class="hint">提示：支持多图上传，会额外生成跨屏一致性问题（如主色/圆角风格漂移）。</div>
+        <div id="hint" class="hint">
+          提示：支持多图上传，会额外生成跨屏一致性问题。评估后会在下方散点图中落点（仅保存在本机浏览器）。
+        </div>
+      </section>
+
+      <section class="card chartCard">
+        <div class="sectionTitle">一致性双轴分布</div>
+        <p class="chartExpl">
+          横轴为<strong>视觉与组件一致性</strong>（色彩 token、圆角等），纵轴为<strong>布局与信息层级一致性</strong>（间距网格、字号层级）。
+          绿色区域表示与 <strong>Apple 一致性原则</strong>高度相符的重叠区（双轴得分均较高）。蓝点为系统参考界面示意，橙点为你的上传记录。
+        </p>
+        <div id="scatterMount" class="scatterMount"></div>
+        <div class="chartToolbar">
+          <button id="btnDeletePoint" type="button" class="btn secondary" disabled>删除选中的我的上传</button>
+          <span id="scatterSelectionHint" class="hint"></span>
+        </div>
       </section>
 
       <section class="grid">

@@ -56,3 +56,19 @@ input[type=file]{color:var(--muted)}
 .dialog::backdrop{background:rgba(0,0,0,.65)}
 .dialogHeader{display:flex;justify-content:space-between;align-items:center;padding:12px 12px 10px;background:var(--card);border-bottom:1px solid var(--border)}
 .frame{border:none;width:100%;height:calc(100% - 52px);background:white}
+
+.chartCard{margin-top:14px}
+.chartExpl{margin:0 0 12px;font-size:13px;color:var(--muted);line-height:1.55}
+.chartExpl strong{color:var(--text);font-weight:650}
+.scatterMount{
+  width:100%;
+  max-width:560px;
+  margin:0 auto;
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  background:rgba(0,0,0,.15);
+}
+.scatterInner{width:100%}
+.scatterSvg{display:block;width:100%;height:auto}
+.chartToolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
