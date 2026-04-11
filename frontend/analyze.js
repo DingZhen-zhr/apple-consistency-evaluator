@@ -50,9 +50,9 @@ function rgbToLab01(r, g, b) {
   const fz = f(zr);
   const L = 116 * fy - 16;
   const a = 500 * (fx - fy);
-  const b = 200 * (fy - fz);
+  const labB = 200 * (fy - fz);
   // Normalize roughly to 0..1 for stable thresholds in browser
-  return { L: L / 100, a: (a + 128) / 255, b: (b + 128) / 255 };
+  return { L: L / 100, a: (a + 128) / 255, b: (labB + 128) / 255 };
 }
 
 function deltaE76Lab01(lab1, lab2) {
