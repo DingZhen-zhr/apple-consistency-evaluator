@@ -76,8 +76,8 @@ GitHub Pages **只能托管静态文件**（HTML/CSS/JS），无法直接运行 
 
 ### C) 本地静态前端如何指向后端（可选）
 
-复制 [`frontend/config.example.js`](frontend/config.example.js) 为 `frontend/config.js`，把 `window.__API_BASE__` 改成你的 Render 地址。  
-（`frontend/config.js` 默认被 `.gitignore` 忽略，避免把个人机器配置提交进仓库。）
+直接编辑 [`frontend/config.js`](frontend/config.js)，把 `window.__API_BASE__` 改成你的 Render 地址（不要末尾 `/`）。  
+GitHub Pages 部署时，GitHub Actions 会自动覆盖生成 `frontend/config.js`（见工作流文件）。
 
 ## 上传到 GitHub（把本目录作为独立仓库）
 
