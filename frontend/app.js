@@ -1,4 +1,4 @@
-import { analyzeFiles, buildReportHtml } from "./analyze.mjs";
+import { analyzeFiles, buildReportHtml } from "./analyze.js";
 
 const $ = (id) => document.getElementById(id);
 
