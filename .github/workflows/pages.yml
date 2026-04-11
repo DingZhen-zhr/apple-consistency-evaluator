@@ -49,7 +49,9 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend
+          # NOTE: `path: frontend` may upload a *folder named frontend* (so the site root becomes empty
+          # and the real page lives at /frontend/index.html). Using a glob uploads the *contents*.
+          path: frontend/*
 
       - name: Deploy to GitHub Pages
         id: deployment
