@@ -46,38 +46,34 @@ uvicorn app.main:app --port 8010
 - 每个维度从 \(100\) 分开始，按问题严重程度扣分（low/medium/high）。
 - 总分为维度分的均值（便于在作业中解释“哪类一致性问题影响最大”）。
 
-## 让老师在线访问（GitHub Pages + 云端 API）
+## 让老师在线访问（GitHub Pages，纯静态/浏览器本地计算）
 
-GitHub Pages **只能托管静态文件**（HTML/CSS/JS），无法直接运行 FastAPI。  
-因此推荐组合是：
+本作业的 Web 界面是 **纯静态站点**：分析逻辑在浏览器里完成（不上传图片到任何服务器），因此 **不需要 Render / 不需要后端云部署** 也能完整演示功能。
 
-- **前端**：部署到 GitHub Pages（公开 `https://<你的用户名>.github.io/<仓库名>/`）
-- **后端**：部署到 Render（公开 `https://xxx.onrender.com`），并在 GitHub 仓库变量里告诉前端去调用它
+### A) 用 GitHub Pages 发布（推荐交作业方式）
 
-### A) 部署后端到 Render（推荐）
-
-1. 在 GitHub 新建一个空仓库（建议设为 **Public**），把本目录 push 上去（见下方“上传到 GitHub”）。
-2. 打开 Render，创建 **Web Service**，连接你的 GitHub 仓库。
-3. Render 里使用仓库根目录的 [`render.yaml`](render.yaml)（或手动设置）：
-   - **Root Directory**：`backend`
-   - **Build**：`pip install -r requirements.txt`
-   - **Start**：`uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-4. 部署完成后，你会得到一个公网地址，例如：`https://apple-consistency-api.onrender.com`
-
-可选：为了更安全，你可以在 Render 设置环境变量 `CORS_ALLOW_ORIGINS` 为你的 GitHub Pages 精确地址（逗号分隔）。
-
-### B) 部署前端到 GitHub Pages
-
-1. 在 GitHub 仓库 **Settings → Pages**：
+1. 确保仓库已 push 到 GitHub（见下方“上传到 GitHub”）。
+2. 在 GitHub 仓库 **Settings → Pages**：
    - **Build and deployment**：选择 **GitHub Actions**
-2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions → Variables** 新增变量：
-   - `PUBLIC_API_BASE` = 你在 Render 上的后端地址（**不要**末尾 `/`）
 3. push 到 `main` 分支后会触发工作流：[`.github/workflows/pages.yml`](.github/workflows/pages.yml)
 
-### C) 本地静态前端如何指向后端（可选）
+发布后，老师一般通过如下地址访问（示例）：
 
-直接编辑 [`frontend/config.js`](frontend/config.js)，把 `window.__API_BASE__` 改成你的 Render 地址（不要末尾 `/`）。  
-GitHub Pages 部署时，GitHub Actions 会自动覆盖生成 `frontend/config.js`（见工作流文件）。
+`https://dingzhen-zhr.github.io/apple-consistency-evaluator/`
+
+### B) 关于“不要任何人都能访问”
+
+GitHub Pages 的站点链接 **本质上是公网可访问的**（知道链接的人就能打开），GitHub **不会**为免费账号提供“只有某个老师能打开、但又不登录”的 Pages 访问控制。
+
+如果你必须做到强访问控制，常见替代方案是：
+
+- 把仓库设为 **Private**，只邀请老师为协作者；老师用 **GitHub Codespaces / 本地运行** 打开页面（不走公网 Pages）
+- 或学校提供的私有托管/内网部署
+
+### C)（可选）仍然想保留 FastAPI 后端
+
+仓库里的 `backend/` 仍可本地运行（用于开发/扩展），但它不是 GitHub Pages 方案的必要条件。  
+仓库根目录的 [`render.yaml`](render.yaml) 也仅作为“可选云端后端”的模板，不是本作业默认路径。
 
 ## 上传到 GitHub（把本目录作为独立仓库）
 

@@ -1,19 +1,6 @@
+import { analyzeFiles, buildReportHtml } from "./analyze.mjs";
+
 const $ = (id) => document.getElementById(id);
-
-function apiBase() {
-  // Injected by `frontend/config.js` for GitHub Pages deployments.
-  // Example: window.__API_BASE__ = "https://your-service.onrender.com";
-  if (window.__API_BASE__) return String(window.__API_BASE__).replace(/\/+$/, "");
-
-  // Local dev: call API on same origin (FastAPI serves both /ui and /api).
-  return "";
-}
-
-function apiUrl(path) {
-  const p = String(path || "");
-  if (!p.startsWith("/")) return `${apiBase()}/${p}`;
-  return `${apiBase()}${p}`;
-}
 
 function el(tag, className, text) {
   const e = document.createElement(tag);
@@ -63,6 +50,19 @@ function renderResult(result) {
   }
 }
 
+let __lastDownloadUrls = [];
+
+function revokeLastDownloads() {
+  for (const u of __lastDownloadUrls) {
+    try {
+      URL.revokeObjectURL(u);
+    } catch {
+      // ignore
+    }
+  }
+  __lastDownloadUrls = [];
+}
+
 async function analyze() {
   const input = $("file");
   const files = Array.from(input.files || []);
@@ -77,32 +77,50 @@ async function analyze() {
   $("dims").innerHTML = "";
   $("issues").innerHTML = "";
 
-  const form = new FormData();
-  for (const f of files) form.append("files", f);
+  const payload = await analyzeFiles(files, { seed: 42 });
+  const result = {
+    principle: payload.principle,
+    overall_score: payload.overall_score,
+    dimension_scores: payload.dimension_scores,
+    issues: payload.issues,
+    meta: payload.meta,
+  };
 
-  const res = await fetch(apiUrl("/api/analyze"), { method: "POST", body: form });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  const payload = await res.json();
-  renderResult(payload.result);
+  renderResult(result);
 
   // Setup report viewer
   $("btnReport").disabled = false;
-  $("btnReport").onclick = () => {
+  $("btnReport").onclick = async () => {
     const dlg = $("reportDialog");
     const frame = $("reportFrame");
-    const rel = payload?.artifacts?.report_url;
-    frame.src = rel ? apiUrl(rel) : "about:blank";
+    if (!payload.first_bitmap) {
+      frame.src = "about:blank";
+      dlg.showModal();
+      return;
+    }
+    const html = await buildReportHtml({
+      result,
+      filename: payload.first_file?.name || "upload.png",
+      imageBitmap: payload.first_bitmap,
+    });
+    frame.removeAttribute("src");
+    frame.srcdoc = html;
     dlg.showModal();
   };
 
   $("btnJson").disabled = false;
   $("btnJson").onclick = () => {
-    const url = payload?.artifacts?.result_url;
-    if (!url) return;
-    window.open(apiUrl(url), "_blank", "noopener,noreferrer");
+    revokeLastDownloads();
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    __lastDownloadUrls.push(url);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `result_${payload.run_id}.json`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   $("btn").disabled = false;
