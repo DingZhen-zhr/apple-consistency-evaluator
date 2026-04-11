@@ -88,9 +88,12 @@ git init
 git branch -M main
 git add .
 git commit -m "Add Apple consistency evaluator (FastAPI + static UI)"
-git remote add origin https://github.com/DingZhen-zhr/<你的仓库名>.git
+git remote add origin https://github.com/DingZhen-zhr/apple-consistency-evaluator.git
 git push -u origin main
 ```
 
 > 说明：我无法代替你完成 `git push` 的登录授权；你需要在本机完成一次 GitHub 登录（HTTPS PAT 或 SSH key）。
+>
+> 另外：请先在 GitHub 上创建 **同名空仓库** `apple-consistency-evaluator`（建议 Public）。  
+> 如果你想用别的仓库名，把上面 `git remote add origin ...` 的 URL 改成你的仓库即可。
 
