@@ -198,6 +198,7 @@ export function createScatterChart(container, options = {}) {
         g.appendChild(cd);
         const img = document.createElementNS(svg.namespaceURI, "image");
         img.setAttribute("href", p.thumbDataUrl);
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", p.thumbDataUrl);
         img.setAttribute("x", String(cx - 14));
         img.setAttribute("y", String(cy - 14));
         img.setAttribute("width", "28");

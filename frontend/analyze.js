@@ -915,13 +915,24 @@ function scoreDimensions(issues, expectedDimensions) {
 async function decodeBitmap(file) {
   const url = URL.createObjectURL(file);
   try {
-    const bmp = await createImageBitmap(await fetch(url));
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`无法读取图片文件（${res.status}）。`);
+    }
+    const blob = await res.blob();
+    // createImageBitmap 需要 Blob / ImageBitmapSource，不能传入 Response，否则会抛错导致无法分析
+    const bmp = await createImageBitmap(blob);
     const canvas =
       typeof OffscreenCanvas !== "undefined"
         ? new OffscreenCanvas(bmp.width, bmp.height)
         : Object.assign(document.createElement("canvas"), { width: bmp.width, height: bmp.height });
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      bmp.close?.();
+      throw new Error("当前环境无法创建画布上下文，请换用 Chrome / Edge / Safari 最新版本。");
+    }
     ctx.drawImage(bmp, 0, 0);
+    bmp.close?.();
     return canvas;
   } finally {
     URL.revokeObjectURL(url);

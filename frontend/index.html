@@ -9,6 +9,8 @@
     <script src="./config.js"></script>
   </head>
   <body>
+    <div id="bootError" class="bootError" hidden></div>
+    <div id="fileProtocolWarn" class="fileProtocolWarn" hidden></div>
     <div class="container">
       <header class="header">
         <div>
@@ -66,7 +68,29 @@
       <iframe id="reportFrame" class="frame"></iframe>
     </dialog>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module">
+      import("./app.js").catch((err) => {
+        console.error(err);
+        const el = document.getElementById("bootError");
+        if (!el) return;
+        el.hidden = false;
+        el.textContent =
+          "页面脚本未能加载，因此看不到参考散点图、也无法开始评估。常见原因：① 用「文件」协议双击打开了 HTML（浏览器会拦截 ES 模块）；② 离线拷贝时漏了 .js 文件。请在本机用 HTTP 打开 frontend 目录（例如在该目录执行 python -m http.server 8080 后访问 http://localhost:8080/），或使用已部署的 GitHub Pages 链接。详情：" +
+          (err && err.message ? err.message : String(err));
+      });
+    </script>
+    <script>
+      (function () {
+        if (location.protocol === "file:") {
+          var el = document.getElementById("fileProtocolWarn");
+          if (el) {
+            el.hidden = false;
+            el.textContent =
+              "检测到本地文件方式打开：多数浏览器会阻止模块脚本运行，页面将无法显示「一致性双轴分布」参考图与评估功能。请使用本地 HTTP 服务打开本目录，或访问线上演示页面。";
+          }
+        }
+      })();
+    </script>
   </body>
 </html>
 
