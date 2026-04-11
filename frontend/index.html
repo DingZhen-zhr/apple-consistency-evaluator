@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>一致性原则评估工具（个人作业）</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- Optional runtime config for GitHub Pages / static hosting -->
+    <script src="./config.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="kicker">Apple Consistency</div>
+          <h1>一致性原则评估工具</h1>
+          <p class="sub">
+            上传移动端界面截图，生成可解释的“一致性”评估：分数、问题清单与标注报告（可导出）。
+          </p>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="row">
+          <input id="file" type="file" accept="image/*" multiple />
+          <button id="btn" class="btn">开始评估</button>
+          <button id="btnReport" class="btn secondary" disabled>打开 HTML 报告</button>
+          <button id="btnJson" class="btn secondary" disabled>下载 result.json</button>
+        </div>
+        <div id="hint" class="hint">提示：支持多图上传，会额外生成跨屏一致性问题（如主色/圆角风格漂移）。</div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <div class="sectionTitle">结果概览</div>
+          <div id="score" class="score">—</div>
+          <div id="dims" class="dims"></div>
+        </div>
+        <div class="card">
+          <div class="sectionTitle">问题列表</div>
+          <div id="issues" class="issues"></div>
+        </div>
+      </section>
+    </div>
+
+    <dialog id="reportDialog" class="dialog">
+      <div class="dialogHeader">
+        <div style="font-weight: 700">HTML 报告</div>
+        <button id="closeDialog" class="btn secondary">关闭</button>
+      </div>
+      <iframe id="reportFrame" class="frame"></iframe>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+
