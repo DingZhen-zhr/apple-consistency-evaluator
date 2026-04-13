@@ -44,6 +44,11 @@ jobs:
           root_photos = pathlib.Path("photos")
           if root_photos.exists() and root_photos.is_dir():
               shutil.copytree(root_photos, dst / "photos", dirs_exist_ok=True)
+          else:
+              # Also accept `backend/photos/` (some users keep a dataset there during experiments).
+              backend_photos = pathlib.Path("backend") / "photos"
+              if backend_photos.exists() and backend_photos.is_dir():
+                  shutil.copytree(backend_photos, dst / "photos", dirs_exist_ok=True)
 
           # Generate `photos/manifest.json` for static runtime loading.
           photos_dir = dst / "photos"
