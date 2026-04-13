@@ -2,7 +2,7 @@ import { analyzeFiles, buildReportHtml } from "./analyze.js";
 import { computeScatterAxes } from "./metrics.js";
 import { loadUserPoints, addUserPoint, removeUserPoint } from "./storage.js";
 import { createScatterChart } from "./scatter-chart.js";
-import { REFERENCE_POINTS } from "./reference-points.js";
+import { loadPhotoManifest, groupImagesByBrand } from "./brand-dataset.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -230,7 +230,7 @@ const scatterChart = createScatterChart(scatterMount, {
 });
 scatterChart.setUserPoints(loadUserPoints());
 
-const REF_CACHE_KEY = "apple-consistency-refcache-v2";
+const REF_CACHE_KEY = "apple-consistency-brandcache-v1";
 const __brandPointById = new Map();
 let __computedExamples = [];
 
@@ -261,35 +261,64 @@ async function fetchAsFile(url, fallbackName) {
   return new File([blob], name, { type: blob.type || "image/png" });
 }
 
-async function initReferencePoints() {
+async function initBrandDataset() {
   const cache = loadRefCache();
+  const { images } = await loadPhotoManifest();
+  const byBrand = groupImagesByBrand(images);
+
   const out = [];
-  for (const ref of REFERENCE_POINTS) {
-    const cached = cache[ref.id];
-    const now = Date.now();
-    const isFresh = cached && typeof cached === "object" && now - (cached.computedAt || 0) < 30 * 24 * 3600 * 1000;
-    if (isFresh && typeof cached.x === "number" && typeof cached.y === "number") {
-      out.push({ ...ref, x: cached.x, y: cached.y });
-      continue;
-    }
-    try {
-      const f = await fetchAsFile(ref.imageUrl, `${ref.id}.png`);
-      const payload = await analyzeFiles([f], { seed: 42 });
-      const result = {
-        principle: payload.principle,
-        overall_score: payload.overall_score,
-        dimension_scores: payload.dimension_scores,
-        issues: payload.issues,
-        meta: payload.meta,
-      };
-      const axes = computeScatterAxes(result);
-      cache[ref.id] = { x: axes.x, y: axes.y, computedAt: Date.now(), overall_score: result.overall_score };
-      out.push({ ...ref, x: axes.x, y: axes.y });
-    } catch (e) {
-      console.warn("reference analyze failed", ref.id, e);
-      out.push(ref);
+  const now = Date.now();
+  const maxAgeMs = 30 * 24 * 3600 * 1000;
+
+  // Analyze each screenshot to obtain axes; cache per-image.
+  for (const [brand, list] of byBrand.entries()) {
+    for (const rel of list) {
+      const id = `photo:${rel}`;
+      const cached = cache[id];
+      const isFresh = cached && typeof cached === "object" && now - (cached.computedAt || 0) < maxAgeMs;
+      if (isFresh && typeof cached.x === "number" && typeof cached.y === "number") {
+        out.push({
+          id,
+          brand,
+          label: rel.split("/").pop() || rel,
+          x: cached.x,
+          y: cached.y,
+          imageUrl: `./${rel}`,
+          thumbUrl: `./${rel}`,
+          sourceUrl: "",
+          license: "",
+        });
+        continue;
+      }
+      try {
+        const f = await fetchAsFile(`./${rel}`, `${brand}_${(rel.split("/").pop() || "img").replaceAll(" ", "_")}`);
+        const payload = await analyzeFiles([f], { seed: 42 });
+        const result = {
+          principle: payload.principle,
+          overall_score: payload.overall_score,
+          dimension_scores: payload.dimension_scores,
+          issues: payload.issues,
+          meta: payload.meta,
+        };
+        const axes = computeScatterAxes(result);
+        cache[id] = { x: axes.x, y: axes.y, computedAt: Date.now() };
+        out.push({
+          id,
+          brand,
+          label: rel.split("/").pop() || rel,
+          x: axes.x,
+          y: axes.y,
+          imageUrl: `./${rel}`,
+          thumbUrl: `./${rel}`,
+          sourceUrl: "",
+          license: "",
+        });
+      } catch (e) {
+        console.warn("photo analyze failed", rel, e);
+      }
     }
   }
+
   saveRefCache(cache);
   __computedExamples = out;
   const brandPoints = computeBrandAverages(out);
@@ -299,7 +328,7 @@ async function initReferencePoints() {
   renderBrandExamples(""); // default view
 }
 
-initReferencePoints().catch((e) => console.warn(e));
+initBrandDataset().catch((e) => console.warn(e));
 
 function computeBrandAverages(examples) {
   const by = new Map();

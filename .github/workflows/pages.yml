@@ -32,12 +32,33 @@ jobs:
           rm -rf _site
           python - <<'PY'
           import os, shutil, pathlib
+          import json
 
           src = pathlib.Path("frontend")
           dst = pathlib.Path("_site")
           if dst.exists():
               shutil.rmtree(dst)
           shutil.copytree(src, dst)
+
+          # Optional: also include repo-root `photos/` if the user keeps screenshots there.
+          root_photos = pathlib.Path("photos")
+          if root_photos.exists() and root_photos.is_dir():
+              shutil.copytree(root_photos, dst / "photos", dirs_exist_ok=True)
+
+          # Generate `photos/manifest.json` for static runtime loading.
+          photos_dir = dst / "photos"
+          images = []
+          if photos_dir.exists():
+              for p in photos_dir.rglob("*"):
+                  if not p.is_file():
+                      continue
+                  if p.suffix.lower() not in [".png", ".jpg", ".jpeg", ".webp"]:
+                      continue
+                  rel = p.relative_to(dst).as_posix()
+                  images.append(rel)
+          images.sort()
+          (photos_dir).mkdir(parents=True, exist_ok=True)
+          (photos_dir / "manifest.json").write_text(json.dumps({"images": images}, ensure_ascii=False, indent=2), encoding="utf-8")
 
           public_api_base = os.environ.get("PUBLIC_API_BASE", "").strip()
           if public_api_base:
