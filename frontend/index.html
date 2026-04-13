@@ -53,7 +53,7 @@
         <div class="refGalleryWrap">
           <div class="sectionTitle" style="margin-top: 10px">参考界面素材</div>
           <div id="refGallery" class="refGallery"></div>
-          <div class="hint">注：参考界面素材均为可再分发许可；署名与许可见仓库 `ASSETS_ATTRIBUTION.md`。</div>
+          <div class="hint">提示：点击任意缩略图可放大查看；署名与许可见仓库 `ASSETS_ATTRIBUTION.md`。</div>
         </div>
       </section>
 
@@ -76,6 +76,25 @@
         <button id="closeDialog" class="btn secondary">关闭</button>
       </div>
       <iframe id="reportFrame" class="frame"></iframe>
+    </dialog>
+
+    <dialog id="refDialog" class="dialog refDialog">
+      <div class="dialogHeader">
+        <div id="refDialogTitle" style="font-weight: 800">参考界面</div>
+        <div class="row" style="gap:8px">
+          <button id="refPrev" class="btn secondary" type="button">上一个</button>
+          <button id="refNext" class="btn secondary" type="button">下一个</button>
+          <button id="refClose" class="btn secondary" type="button">关闭</button>
+        </div>
+      </div>
+      <div class="refDialogBody">
+        <img id="refDialogImg" class="refDialogImg" alt="参考界面大图" />
+        <div class="refDialogMeta">
+          <div id="refDialogSub" class="hint" style="margin-top:0"></div>
+          <a id="refDialogLink" class="refLink" href="#" target="_blank" rel="noopener">来源</a>
+          <div id="refDialogCoords" class="hint"></div>
+        </div>
+      </div>
     </dialog>
 
     <script type="module">

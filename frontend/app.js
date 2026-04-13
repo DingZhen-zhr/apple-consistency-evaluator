@@ -217,7 +217,7 @@ const scatterChart = createScatterChart(scatterMount, {
       scatterSelectionHint.textContent = "已选中：我的上传（可删除）";
     } else if (sel.kind === "reference") {
       btnDeletePoint.disabled = true;
-      scatterSelectionHint.textContent = "已选中：苹果参考点（不可删除）";
+      scatterSelectionHint.textContent = "已选中：参考点（不可删除，可在下方“参考界面素材”里点开大图）";
     } else {
       btnDeletePoint.disabled = true;
       scatterSelectionHint.textContent = "";
@@ -291,6 +291,82 @@ async function initReferencePoints() {
 
 initReferencePoints().catch((e) => console.warn(e));
 
+let __refPoints = [];
+let __refDialogBrand = "";
+let __refDialogIndex = 0;
+
+const refDialog = $("refDialog");
+const refDialogTitle = $("refDialogTitle");
+const refDialogImg = $("refDialogImg");
+const refDialogSub = $("refDialogSub");
+const refDialogLink = $("refDialogLink");
+const refDialogCoords = $("refDialogCoords");
+const refPrev = $("refPrev");
+const refNext = $("refNext");
+const refClose = $("refClose");
+
+function openRefDialog(points, brand, index) {
+  __refPoints = Array.isArray(points) ? points : [];
+  __refDialogBrand = brand || "";
+  __refDialogIndex = Math.max(0, Math.min(index | 0, __refPoints.length - 1));
+  renderRefDialog();
+  refDialog?.showModal?.();
+}
+
+function closeRefDialog() {
+  refDialog?.close?.();
+}
+
+function sameBrandPoints() {
+  const b = __refDialogBrand;
+  if (!b) return { list: __refPoints, idx: __refDialogIndex };
+  const list = __refPoints.filter((p) => p.brand === b);
+  const cur = __refPoints[__refDialogIndex];
+  const idx = Math.max(0, list.findIndex((p) => p.id === cur?.id));
+  return { list, idx };
+}
+
+function renderRefDialog() {
+  if (!refDialog || !__refPoints.length) return;
+  const { list, idx } = sameBrandPoints();
+  const p = list[idx];
+  if (!p) return;
+
+  if (refDialogTitle) refDialogTitle.textContent = (p.brand ? `${p.brand} · ` : "") + (p.label || "参考界面");
+  if (refDialogImg) refDialogImg.src = p.imageUrl || p.thumbUrl || "";
+  if (refDialogSub) refDialogSub.textContent = p.license ? `许可：${p.license}` : "";
+  if (refDialogLink) {
+    refDialogLink.href = p.sourceUrl || "#";
+    refDialogLink.textContent = p.sourceUrl ? "打开来源页面" : "来源不可用";
+  }
+  if (refDialogCoords) {
+    refDialogCoords.textContent = `坐标：(${Number(p.x).toFixed(1)}, ${Number(p.y).toFixed(1)})`;
+  }
+
+  if (refPrev) refPrev.disabled = idx <= 0;
+  if (refNext) refNext.disabled = idx >= list.length - 1;
+}
+
+refPrev?.addEventListener?.("click", () => {
+  const { list, idx } = sameBrandPoints();
+  const nextIdx = Math.max(0, idx - 1);
+  const nextId = list[nextIdx]?.id;
+  const globalIdx = __refPoints.findIndex((p) => p.id === nextId);
+  if (globalIdx >= 0) __refDialogIndex = globalIdx;
+  renderRefDialog();
+});
+
+refNext?.addEventListener?.("click", () => {
+  const { list, idx } = sameBrandPoints();
+  const nextIdx = Math.min(list.length - 1, idx + 1);
+  const nextId = list[nextIdx]?.id;
+  const globalIdx = __refPoints.findIndex((p) => p.id === nextId);
+  if (globalIdx >= 0) __refDialogIndex = globalIdx;
+  renderRefDialog();
+});
+
+refClose?.addEventListener?.("click", closeRefDialog);
+
 function renderRefGallery(points) {
   const mount = $("refGallery");
   if (!mount) return;
@@ -298,6 +374,20 @@ function renderRefGallery(points) {
   for (const p of points) {
     const card = document.createElement("div");
     card.className = "refCard";
+    card.tabIndex = 0;
+    card.addEventListener("click", () => {
+      const brand = p.brand || "";
+      const idx = points.findIndex((q) => q.id === p.id);
+      openRefDialog(points, brand, idx);
+    });
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const brand = p.brand || "";
+        const idx = points.findIndex((q) => q.id === p.id);
+        openRefDialog(points, brand, idx);
+      }
+    });
 
     const img = document.createElement("img");
     img.className = "refThumb";
