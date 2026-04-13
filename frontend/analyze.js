@@ -232,9 +232,12 @@ function findRectsFromEdges(imageData) {
     gray[p] = ((r * 54 + g * 183 + b * 19) >> 8) & 255;
   }
 
+  // Pre-blur slightly to suppress photo/texture edges (reduces false positives)
+  const g2 = boxBlurGray(gray, width, height, 3);
+
   // Sobel magnitude (approx)
   const mag = new Uint8Array(width * height);
-  const at = (x, y) => gray[y * width + x];
+  const at = (x, y) => g2[y * width + x];
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const gx = -at(x - 1, y - 1) + at(x + 1, y - 1) + -2 * at(x - 1, y) + 2 * at(x + 1, y) + -at(x - 1, y + 1) + at(x + 1, y + 1);
@@ -274,7 +277,9 @@ function findRectsFromEdges(imageData) {
       }
     }
   }
-  for (let p = 0; p < width * height; p++) bin[p] = mag[p] >= Math.max(24, thr) ? 1 : 0;
+  // Raise floor threshold a bit: we prefer fewer, stronger edges over noisy textures.
+  const floorThr = 32;
+  for (let p = 0; p < width * height; p++) bin[p] = mag[p] >= Math.max(floorThr, thr) ? 1 : 0;
 
   const strong = new Uint8Array(width * height);
   for (let y = 1; y < height - 1; y++) {
@@ -336,8 +341,46 @@ function findRectsFromEdges(imageData) {
   }
 
   const maxArea = (width * height * 0.35) | 0;
+  const minArea = 900;
+
+  // Keep only boxes that "look like" UI blocks:
+  // - edge density not too sparse / not too solid
+  // - some border support (edges around the box)
+  function borderSupportScore(b) {
+    const x0 = b.x | 0;
+    const y0 = b.y | 0;
+    const x1 = Math.min(width - 1, x0 + b.w - 1);
+    const y1 = Math.min(height - 1, y0 + b.h - 1);
+    const step = Math.max(1, Math.floor(Math.max(b.w, b.h) / 60));
+    let hit = 0;
+    let tot = 0;
+    // top/bottom
+    for (let x = x0; x <= x1; x += step) {
+      tot += 2;
+      if (strong[y0 * width + x]) hit++;
+      if (strong[y1 * width + x]) hit++;
+    }
+    // left/right
+    for (let y = y0; y <= y1; y += step) {
+      tot += 2;
+      if (strong[y * width + x0]) hit++;
+      if (strong[y * width + x1]) hit++;
+    }
+    return tot ? hit / tot : 0;
+  }
+
   return boxes
-    .filter((b) => b.area >= 900 && b.area <= maxArea)
+    .filter((b) => b.area >= minArea && b.area <= maxArea)
+    .filter((b) => {
+      const fill = b.count / Math.max(1, b.area);
+      if (fill < 0.010 || fill > 0.45) return false;
+      const ar = b.w / Math.max(1, b.h);
+      if (ar < 0.18 || ar > 8.0) return false;
+      // very large regions are likely background/hero images; require stronger border evidence
+      const bs = borderSupportScore(b);
+      if (b.area > width * height * 0.08) return bs >= 0.16;
+      return bs >= 0.10;
+    })
     .sort((a, b) => b.area - a.area)
     .slice(0, 250);
 }
@@ -496,17 +539,41 @@ function typographyIssueFromImage(imageData, seed) {
       if (area < 40 || area > maxBlobArea) continue;
       if (bw <= 2 || bh2 <= 2) continue;
       if (bh2 < 8 || bh2 > (height * 0.18) | 0) continue;
-      blobs.push({ x: minX, y: minY, w: bw, h: bh2, area });
+      // Filter for "text-like" strokes: not too solid, not too sparse, not too square.
+      const fill = cnt / Math.max(1, area);
+      if (fill < 0.06 || fill > 0.62) continue;
+      const ar = bw / Math.max(1, bh2);
+      if (ar < 0.35 || ar > 18) continue;
+      blobs.push({ x: minX, y: minY, w: bw, h: bh2, area, count: cnt, fill });
     }
   }
   if (blobs.length < 25) return [];
 
+  // Robust tiering:
+  // - merge by relative tolerance (larger text allows larger merges)
+  // - require a minimum count per tier to suppress noise tiers
   const heights = blobs.map((b) => b.h).sort((a, b) => a - b);
-  const mergePx = 2;
-  const tiers = [];
+  const med = heights[(heights.length / 2) | 0];
+  const mergePx = Math.max(2, Math.round(med * 0.08));
+  const tierCenters = [];
+  const tierCounts = [];
   for (const hh of heights) {
-    if (!tiers.length || Math.abs(hh - tiers[tiers.length - 1]) > mergePx) tiers.push(hh);
+    if (!tierCenters.length || Math.abs(hh - tierCenters[tierCenters.length - 1]) > mergePx) {
+      tierCenters.push(hh);
+      tierCounts.push(1);
+    } else {
+      const i = tierCenters.length - 1;
+      // incremental mean
+      const c = tierCounts[i] + 1;
+      tierCenters[i] = (tierCenters[i] * tierCounts[i] + hh) / c;
+      tierCounts[i] = c;
+    }
   }
+  const tiers = tierCenters
+    .map((v, i) => ({ v, c: tierCounts[i] }))
+    .filter((t) => t.c >= 3)
+    .map((t) => Math.round(t.v));
+
   if (tiers.length <= 6) return [];
 
   const tiersArr = new Int32Array(tiers);
