@@ -3,6 +3,7 @@ import { computeScatterAxes } from "./metrics.js";
 import { loadUserPoints, addUserPoint, removeUserPoint } from "./storage.js";
 import { createScatterChart } from "./scatter-chart.js";
 import { loadPhotoManifest, groupImagesByBrand } from "./brand-dataset.js";
+import { REFERENCE_POINTS } from "./reference-points.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -264,11 +265,16 @@ async function fetchAsFile(url, fallbackName) {
 async function initBrandDataset() {
   const cache = loadRefCache();
   const { images } = await loadPhotoManifest();
-  const byBrand = groupImagesByBrand(images);
+  const byBrand = images?.length ? groupImagesByBrand(images) : new Map();
 
   const out = [];
   const now = Date.now();
   const maxAgeMs = 30 * 24 * 3600 * 1000;
+
+  // Fallback to bundled reference points if no `photos/` dataset is present.
+  if (!images || images.length === 0) {
+    for (const ref of REFERENCE_POINTS) out.push({ ...ref });
+  }
 
   // Analyze each screenshot to obtain axes; cache per-image.
   for (const [brand, list] of byBrand.entries()) {
