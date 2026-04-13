@@ -208,6 +208,7 @@ async function bitmapToThumbDataUrl(bitmap, maxW = 88) {
 const scatterMount = $("scatterMount");
 const btnDeletePoint = $("btnDeletePoint");
 const scatterSelectionHint = $("scatterSelectionHint");
+const datasetStatus = $("datasetStatus");
 
 const scatterChart = createScatterChart(scatterMount, {
   brandPoints: [],
@@ -273,10 +274,29 @@ async function initBrandDataset() {
 
   // Fallback to bundled reference points if no `photos/` dataset is present.
   if (!images || images.length === 0) {
+    setDatasetStatus({
+      phase: "fallback",
+      total: 0,
+      brands: 0,
+      analyzed: 0,
+      message: "未检测到 `photos/manifest.json` 中的图片列表，已使用内置示例数据集（用于演示）。",
+    });
     for (const ref of REFERENCE_POINTS) out.push({ ...ref });
   }
 
   // Analyze each screenshot to obtain axes; cache per-image.
+  const totalToAnalyze = images?.length || 0;
+  let analyzed = 0;
+  if (totalToAnalyze > 0) {
+    setDatasetStatus({
+      phase: "loading",
+      total: totalToAnalyze,
+      brands: byBrand.size,
+      analyzed,
+      message: "已读取截图清单，正在批量分析并计算品牌平均点（首次加载会较慢）。",
+    });
+  }
+
   for (const [brand, list] of byBrand.entries()) {
     for (const rel of list) {
       const id = `photo:${rel}`;
@@ -294,6 +314,10 @@ async function initBrandDataset() {
           sourceUrl: "",
           license: "",
         });
+        analyzed++;
+        if (totalToAnalyze > 0 && analyzed % 4 === 0) {
+          setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+        }
         continue;
       }
       try {
@@ -319,8 +343,13 @@ async function initBrandDataset() {
           sourceUrl: "",
           license: "",
         });
+        analyzed++;
+        if (totalToAnalyze > 0 && analyzed % 2 === 0) {
+          setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+        }
       } catch (e) {
         console.warn("photo analyze failed", rel, e);
+        analyzed++;
       }
     }
   }
@@ -332,9 +361,47 @@ async function initBrandDataset() {
   for (const bp of brandPoints) __brandPointById.set(bp.id, bp);
   scatterChart.setBrandPoints(brandPoints);
   renderBrandExamples(""); // default view
+
+  if (totalToAnalyze > 0) {
+    setDatasetStatus({
+      phase: "ready",
+      total: totalToAnalyze,
+      brands: brandPoints.length,
+      analyzed: totalToAnalyze,
+      message: `已完成：${brandPoints.length} 个品牌，${totalToAnalyze} 张截图。点击图上的品牌点查看示例。`,
+    });
+  } else {
+    setDatasetStatus({
+      phase: "ready",
+      total: out.length,
+      brands: brandPoints.length,
+      analyzed: out.length,
+      message: `已完成：${brandPoints.length} 个品牌（内置示例）。点击图上的品牌点查看示例。`,
+    });
+  }
 }
 
 initBrandDataset().catch((e) => console.warn(e));
+
+function setDatasetStatus({ phase, total, brands, analyzed, message } = {}) {
+  if (!datasetStatus) return;
+  const t = Number.isFinite(total) ? total : 0;
+  const b = Number.isFinite(brands) ? brands : 0;
+  const a = Number.isFinite(analyzed) ? analyzed : 0;
+  const right = t > 0 ? `${a}/${t}` : `${a}`;
+  const pill = phase ? `<span class="pill">${escapeHtml(String(phase))}</span>` : "";
+  const msg = message ? escapeHtml(String(message)) : "";
+  datasetStatus.innerHTML = `<span class="muted">数据集：</span>${escapeHtml(String(b))} 品牌，${escapeHtml(String(t))} 张截图（已处理 ${escapeHtml(right)}）${pill}<div class="muted">${msg}</div>`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 function computeBrandAverages(examples) {
   const by = new Map();

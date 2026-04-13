@@ -71,6 +71,9 @@ input[type=file]{color:var(--muted)}
 .chartExpl{margin:0 0 12px;font-size:13px;color:var(--muted);line-height:1.55}
 .chartExpl strong{color:var(--text);font-weight:650}
 .chartLegend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 12px;color:var(--muted);font-size:12px}
+.datasetStatus{margin:0 0 10px;color:rgba(241,241,246,.9);font-size:13px;line-height:1.5}
+.datasetStatus .muted{color:var(--muted)}
+.datasetStatus .pill{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
 .legendItem{display:inline-flex;align-items:center;gap:8px}
 .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
 .dot.ref{background:rgba(10,132,255,.85);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
