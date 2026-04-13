@@ -809,6 +809,22 @@ function kMeansCentersToRgb(centers, counts) {
   return { r, g, b };
 }
 
+function paletteEffectiveCount(palette, minProp = 0.02) {
+  let c = 0;
+  for (const it of palette) if ((it?.p || 0) >= minProp) c++;
+  return c;
+}
+
+function paletteEntropy01(palette) {
+  // Shannon entropy normalized to 0..1 using log2(K)
+  const ps = (palette || []).map((x) => Number(x.p) || 0).filter((p) => p > 0);
+  if (ps.length <= 1) return 0;
+  let h = 0;
+  for (const p of ps) h += -p * Math.log2(p);
+  const maxH = Math.log2(ps.length);
+  return maxH > 0 ? clamp(h / maxH, 0, 1) : 0;
+}
+
 function medianRadiusFromImage(imageData, rects) {
   const maxArea = (imageData.width * imageData.height * 0.22) | 0;
   const cand = rects
@@ -888,7 +904,21 @@ export async function analyzeFiles(files, { seed = 42 } = {}) {
     screenIssues.push(...componentStyleIssueFromRects(imageData, rects));
 
     issuesAll.push(...screenIssues);
-    perScreen.push({ file: name, width: bmp.width, height: bmp.height, issue_count: screenIssues.length });
+    const medRadius = medianRadiusFromImage(imageData, rects);
+    const effColors = paletteEffectiveCount(palette, minProp);
+    const ent = paletteEntropy01(palette);
+    perScreen.push({
+      file: name,
+      width: bmp.width,
+      height: bmp.height,
+      issue_count: screenIssues.length,
+      features: {
+        palette_effective_colors: effColors,
+        palette_entropy_01: Math.round(ent * 1000) / 1000,
+        near_color_pairs: near.length,
+        median_radius_px: medRadius,
+      },
+    });
   }
 
   // cross screen

@@ -114,7 +114,6 @@ async function analyze() {
       overall_score: result.overall_score,
       createdAt: new Date().toISOString(),
       resultSummary: {
-        inAppleZone: axes.inAppleZone,
         xLabel: axes.xLabel,
         yLabel: axes.yLabel,
       },
@@ -210,23 +209,30 @@ const btnDeletePoint = $("btnDeletePoint");
 const scatterSelectionHint = $("scatterSelectionHint");
 
 const scatterChart = createScatterChart(scatterMount, {
-  referencePoints: [],
+  brandPoints: [],
   onSelectionChange: (sel) => {
     if (sel.kind === "user") {
       btnDeletePoint.disabled = false;
       scatterSelectionHint.textContent = "已选中：我的上传（可删除）";
-    } else if (sel.kind === "reference") {
+    } else if (sel.kind === "brand") {
       btnDeletePoint.disabled = true;
-      scatterSelectionHint.textContent = "已选中：参考点（不可删除，可在下方“参考界面素材”里点开大图）";
+      const b = __brandPointById.get(sel.id);
+      scatterSelectionHint.textContent = b
+        ? `已选中：${b.brand || b.label || "品牌"}（下方展示该品牌的示例）`
+        : "已选中：品牌（下方展示示例）";
+      renderBrandExamples(b?.brand || "");
     } else {
       btnDeletePoint.disabled = true;
       scatterSelectionHint.textContent = "";
+      renderBrandExamples("");
     }
   },
 });
 scatterChart.setUserPoints(loadUserPoints());
 
-const REF_CACHE_KEY = "apple-consistency-refcache-v1";
+const REF_CACHE_KEY = "apple-consistency-refcache-v2";
+const __brandPointById = new Map();
+let __computedExamples = [];
 
 function loadRefCache() {
   try {
@@ -285,11 +291,43 @@ async function initReferencePoints() {
     }
   }
   saveRefCache(cache);
-  scatterChart.setReferencePoints(out);
-  renderRefGallery(out);
+  __computedExamples = out;
+  const brandPoints = computeBrandAverages(out);
+  __brandPointById.clear();
+  for (const bp of brandPoints) __brandPointById.set(bp.id, bp);
+  scatterChart.setBrandPoints(brandPoints);
+  renderBrandExamples(""); // default view
 }
 
 initReferencePoints().catch((e) => console.warn(e));
+
+function computeBrandAverages(examples) {
+  const by = new Map();
+  for (const ex of examples) {
+    const brand = ex.brand || "Unknown";
+    if (!by.has(brand)) by.set(brand, []);
+    by.get(brand).push(ex);
+  }
+  const out = [];
+  for (const [brand, list] of by.entries()) {
+    const xs = list.map((p) => Number(p.x)).filter((n) => Number.isFinite(n));
+    const ys = list.map((p) => Number(p.y)).filter((n) => Number.isFinite(n));
+    const x = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 50;
+    const y = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 50;
+    // Use first thumb as brand logo fallback (later can be replaced with real logo assets)
+    const thumbUrl = list[0]?.thumbUrl || list[0]?.imageUrl || "";
+    out.push({
+      id: `brand-${brand.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`.slice(0, 64),
+      brand,
+      label: brand,
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      thumbUrl,
+      __examples: list,
+    });
+  }
+  return out.sort((a, b) => String(a.brand).localeCompare(String(b.brand)));
+}
 
 let __refPoints = [];
 let __refDialogBrand = "";
@@ -367,31 +405,31 @@ refNext?.addEventListener?.("click", () => {
 
 refClose?.addEventListener?.("click", closeRefDialog);
 
-function renderRefGallery(points) {
+function renderBrandExamples(brand) {
   const mount = $("refGallery");
   if (!mount) return;
+  const points = __computedExamples || [];
+  const shown = brand ? points.filter((p) => p.brand === brand) : points;
   mount.innerHTML = "";
-  for (const p of points) {
+  for (const p of shown) {
     const card = document.createElement("div");
     card.className = "refCard";
     card.tabIndex = 0;
     card.addEventListener("click", () => {
-      const brand = p.brand || "";
-      const idx = points.findIndex((q) => q.id === p.id);
-      openRefDialog(points, brand, idx);
+      const idx = shown.findIndex((q) => q.id === p.id);
+      openRefDialog(shown, brand || p.brand || "", idx);
     });
     card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        const brand = p.brand || "";
-        const idx = points.findIndex((q) => q.id === p.id);
-        openRefDialog(points, brand, idx);
+        const idx = shown.findIndex((q) => q.id === p.id);
+        openRefDialog(shown, brand || p.brand || "", idx);
       }
     });
 
     const img = document.createElement("img");
     img.className = "refThumb";
-    img.alt = p.label || "参考界面";
+    img.alt = p.label || "示例";
     img.loading = "lazy";
     img.src = p.thumbUrl || p.imageUrl || "";
     card.appendChild(img);

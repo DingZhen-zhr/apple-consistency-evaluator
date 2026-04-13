@@ -35,15 +35,15 @@
       </section>
 
       <section class="card chartCard">
-        <div class="sectionTitle">一致性双轴分布</div>
+        <div class="sectionTitle">品牌设计分布（双轴图谱）</div>
         <p class="chartExpl">
-          横轴为<strong>视觉与组件一致性</strong>（色彩 token、圆角等），纵轴为<strong>布局与信息层级一致性</strong>（间距网格、字号层级）。
-          绿色区域表示与 <strong>Apple 一致性原则</strong>高度相符的重叠区（双轴得分均较高）。蓝点为系统参考界面示意，橙点为你的上传记录。
+          横轴为<strong>形状/圆角风格</strong>（越右越圆润），纵轴为<strong>色彩复杂度</strong>（越上越多彩）。
+          图中每个带缩略图的圆点代表一个<strong>品牌的平均位置</strong>（由该品牌多张交互界面示例计算得到），点击品牌点会在下方显示该品牌的全部示例。
+          你的上传记录会以橙色点叠加在同一坐标系中，便于对比。
         </p>
         <div class="chartLegend">
-          <span class="legendItem"><span class="dot ref"></span>参考界面（不可删除）</span>
+          <span class="legendItem"><span class="dot ref"></span>品牌平均点（点击查看示例）</span>
           <span class="legendItem"><span class="dot user"></span>我的上传（可删除）</span>
-          <span class="legendItem"><span class="dot zone"></span>Apple 一致区</span>
         </div>
         <div id="scatterMount" class="scatterMount"></div>
         <div class="chartToolbar">

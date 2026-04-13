@@ -75,7 +75,6 @@ input[type=file]{color:var(--muted)}
 .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
 .dot.ref{background:rgba(10,132,255,.85);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
 .dot.user{background:rgba(255,159,10,.95);box-shadow:0 0 0 3px rgba(255,159,10,.18)}
-.dot.zone{background:rgba(52,199,89,.9);box-shadow:0 0 0 3px rgba(52,199,89,.16)}
 .scatterMount{
   width:100%;
   max-width:560px;

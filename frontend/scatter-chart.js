@@ -1,15 +1,11 @@
-const APPLE_ZONE = { x0: 70, y0: 70, x1: 100, y1: 100 };
-
 /**
  * @param {HTMLElement} container
  * @param {{
- *   appleThreshold?: number,
- *   referencePoints?: Array<{ id: string, x: number, y: number, label: string, brand?: string, thumbUrl?: string }>,
- *   onSelectionChange?: (sel: { kind: 'user'|'reference'|'none', id: string|null }) => void
+ *   brandPoints?: Array<{ id: string, x: number, y: number, label: string, brand?: string, thumbUrl?: string }>,
+ *   onSelectionChange?: (sel: { kind: 'user'|'brand'|'none', id: string|null }) => void
  * }} options
  */
 export function createScatterChart(container, options = {}) {
-  const appleThreshold = options.appleThreshold ?? 70;
   const onSelectionChange = options.onSelectionChange || (() => {});
 
   const inner = document.createElement("div");
@@ -24,7 +20,7 @@ export function createScatterChart(container, options = {}) {
   inner.appendChild(svg);
   container.appendChild(inner);
 
-  let referencePoints = Array.isArray(options.referencePoints) ? options.referencePoints : [];
+  let brandPoints = Array.isArray(options.brandPoints) ? options.brandPoints : [];
   let userPoints = [];
   let selectedId = null;
   let selectedKind = "none";
@@ -67,30 +63,6 @@ export function createScatterChart(container, options = {}) {
     bg.setAttribute("rx", "8");
     svg.appendChild(bg);
 
-    // Apple 一致区（与「是否符合苹果一致性原则」高一致重叠）
-    const ax0 = dataX(APPLE_ZONE.x0);
-    const ay0 = dataY(APPLE_ZONE.y1);
-    const aw = dataX(APPLE_ZONE.x1) - ax0;
-    const ah = dataY(APPLE_ZONE.y0) - ay0;
-    const zone = document.createElementNS(svg.namespaceURI, "rect");
-    zone.setAttribute("x", String(ax0));
-    zone.setAttribute("y", String(ay0));
-    zone.setAttribute("width", String(aw));
-    zone.setAttribute("height", String(ah));
-    zone.setAttribute("fill", "rgba(52, 199, 89, 0.12)");
-    zone.setAttribute("stroke", "rgba(52, 199, 89, 0.45)");
-    zone.setAttribute("stroke-width", "1.5");
-    zone.setAttribute("rx", "6");
-    svg.appendChild(zone);
-
-    const zoneLabel = document.createElementNS(svg.namespaceURI, "text");
-    zoneLabel.setAttribute("x", String(ax0 + 8));
-    zoneLabel.setAttribute("y", String(ay0 + 18));
-    zoneLabel.setAttribute("fill", "rgba(200,255,210,0.85)");
-    zoneLabel.setAttribute("font-size", "11");
-    zoneLabel.textContent = "Apple 一致区（双轴均≥" + appleThreshold + "）";
-    svg.appendChild(zoneLabel);
-
     const border = document.createElementNS(svg.namespaceURI, "rect");
     border.setAttribute("x", String(padL));
     border.setAttribute("y", String(padT));
@@ -108,7 +80,7 @@ export function createScatterChart(container, options = {}) {
     xl.setAttribute("text-anchor", "middle");
     xl.setAttribute("fill", "#a3a3b2");
     xl.setAttribute("font-size", "12");
-    xl.textContent = "视觉与组件一致性 →";
+    xl.textContent = "形状/圆角风格 →";
     svg.appendChild(xl);
 
     const yl = document.createElementNS(svg.namespaceURI, "text");
@@ -118,7 +90,7 @@ export function createScatterChart(container, options = {}) {
     yl.setAttribute("fill", "#a3a3b2");
     yl.setAttribute("font-size", "12");
     yl.setAttribute("transform", `rotate(-90 16 ${padT + innerH / 2})`);
-    yl.textContent = "布局与信息层级一致性 →";
+    yl.textContent = "色彩复杂度 →";
     svg.appendChild(yl);
 
     // Ticks 0,50,100
@@ -143,28 +115,61 @@ export function createScatterChart(container, options = {}) {
       svg.appendChild(ty);
     }
 
-    // Reference points (below user points)
-    for (const p of referencePoints) {
-      const cx = dataX(p.x);
-      const cy = dataY(p.y);
+    // Brand points (below user points) with collision-avoid layout
+    const bps = (brandPoints || []).map((p) => ({ ...p }));
+    const placed = bps.map((p) => ({ p, cx: dataX(p.x), cy: dataY(p.y) }));
+    // Simple repulsion in screen space to reduce overlap
+    const minD = 30;
+    for (let it = 0; it < 90; it++) {
+      let moved = 0;
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          const a = placed[i];
+          const b = placed[j];
+          const dx = b.cx - a.cx;
+          const dy = b.cy - a.cy;
+          const d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+          if (d >= minD) continue;
+          const push = (minD - d) * 0.35;
+          const ux = dx / d;
+          const uy = dy / d;
+          a.cx -= ux * push;
+          a.cy -= uy * push;
+          b.cx += ux * push;
+          b.cy += uy * push;
+          moved++;
+        }
+      }
+      // clamp within plot rect
+      for (const o of placed) {
+        o.cx = Math.max(padL + 10, Math.min(padL + innerW - 10, o.cx));
+        o.cy = Math.max(padT + 10, Math.min(padT + innerH - 10, o.cy));
+      }
+      if (moved === 0) break;
+    }
+
+    for (const o of placed) {
+      const p = o.p;
+      const cx = o.cx;
+      const cy = o.cy;
       const g = document.createElementNS(svg.namespaceURI, "g");
-      g.setAttribute("data-ref-id", p.id);
+      g.setAttribute("data-brand-id", p.id);
       g.style.cursor = "pointer";
 
-      const isSel = selectedKind === "reference" && selectedId === p.id;
+      const isSel = selectedKind === "brand" && selectedId === p.id;
       const thumb = p.thumbUrl;
       if (thumb) {
-        const clipId = `clip-ref-${p.id}`;
+        const clipId = `clip-brand-${p.id}`;
         const cd = document.createElementNS(svg.namespaceURI, "defs");
-        cd.innerHTML = `<clipPath id="${clipId}"><circle cx="${cx}" cy="${cy}" r="13"/></clipPath>`;
+        cd.innerHTML = `<clipPath id="${clipId}"><circle cx="${cx}" cy="${cy}" r="14"/></clipPath>`;
         g.appendChild(cd);
         const img = document.createElementNS(svg.namespaceURI, "image");
         img.setAttribute("href", thumb);
         img.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", thumb);
-        img.setAttribute("x", String(cx - 13));
-        img.setAttribute("y", String(cy - 13));
-        img.setAttribute("width", "26");
-        img.setAttribute("height", "26");
+        img.setAttribute("x", String(cx - 14));
+        img.setAttribute("y", String(cy - 14));
+        img.setAttribute("width", "28");
+        img.setAttribute("height", "28");
         img.setAttribute("clip-path", `url(#${clipId})`);
         img.setAttribute("preserveAspectRatio", "xMidYMid slice");
         g.appendChild(img);
@@ -172,27 +177,27 @@ export function createScatterChart(container, options = {}) {
       const ring = document.createElementNS(svg.namespaceURI, "circle");
       ring.setAttribute("cx", String(cx));
       ring.setAttribute("cy", String(cy));
-      ring.setAttribute("r", thumb ? "13" : (isSel ? "9" : "7"));
+      ring.setAttribute("r", thumb ? "14" : (isSel ? "10" : "8"));
       ring.setAttribute("fill", thumb ? "none" : "rgba(10,132,255,0.35)");
-      ring.setAttribute("stroke", "#0a84ff");
-      ring.setAttribute("stroke-width", isSel ? "3" : "1.8");
+      ring.setAttribute("stroke", isSel ? "#ffd60a" : "#0a84ff");
+      ring.setAttribute("stroke-width", isSel ? "3.2" : "2.0");
       g.appendChild(ring);
 
-      if (isSel) {
+      if (isSel || placed.length <= 8) {
         const lab = document.createElementNS(svg.namespaceURI, "text");
         lab.setAttribute("x", String(cx + 14));
         lab.setAttribute("y", String(cy - 10));
         lab.setAttribute("fill", "rgba(241,241,246,0.88)");
-        lab.setAttribute("font-size", "11");
-        lab.textContent = (p.brand ? `${p.brand} · ` : "") + (p.label || "");
+        lab.setAttribute("font-size", isSel ? "12" : "10");
+        lab.textContent = p.brand || p.label || "";
         g.appendChild(lab);
       }
 
       g.addEventListener("click", (e) => {
         e.stopPropagation();
         selectedId = p.id;
-        selectedKind = "reference";
-        onSelectionChange({ kind: "reference", id: p.id });
+        selectedKind = "brand";
+        onSelectionChange({ kind: "brand", id: p.id });
         render();
       });
       svg.appendChild(g);
@@ -267,7 +272,7 @@ export function createScatterChart(container, options = {}) {
       svg.addEventListener("click", (e) => {
         const t = e.target;
         if (t && typeof t.closest === "function") {
-          if (t.closest("g[data-user-id]") || t.closest("g[data-ref-id]")) return;
+          if (t.closest("g[data-user-id]") || t.closest("g[data-brand-id]")) return;
         }
         selectedId = null;
         selectedKind = "none";
@@ -282,8 +287,8 @@ export function createScatterChart(container, options = {}) {
     render();
   }
 
-  function setReferencePoints(points) {
-    referencePoints = Array.isArray(points) ? points : [];
+  function setBrandPoints(points) {
+    brandPoints = Array.isArray(points) ? points : [];
     render();
   }
 
@@ -295,9 +300,9 @@ export function createScatterChart(container, options = {}) {
 
   return {
     setUserPoints,
-    setReferencePoints,
+    setBrandPoints,
     getSelection,
-    /** @param {'user'|'reference'|'none'} kind */
+    /** @param {'user'|'brand'|'none'} kind */
     clearSelection(kind = "none") {
       selectedId = null;
       selectedKind = kind === "none" ? "none" : selectedKind;
