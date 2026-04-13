@@ -175,4 +175,27 @@ export const REFERENCE_POINTS = [
     sourceUrl: "https://commons.wikimedia.org/wiki/File:OPPO_A57_LineageOS.jpg",
     license: "CC BY-SA 4.0",
   },
+  {
+    id: "ref-oppo-bdp93-boot",
+    brand: "OPPO",
+    label: "BDP-93（启动界面）",
+    x: 48,
+    y: 42,
+    imageUrl: "./assets/reference/oppo/oppo_bdp93_booting.jpg",
+    thumbUrl: "./assets/reference/oppo/oppo_bdp93_booting.jpg",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:OPPO_BDP-93_booting.jpg",
+    license: "CC BY-SA 4.0",
+  },
+  {
+    id: "ref-oppo-bdp93-display",
+    brand: "OPPO",
+    label: "BDP-93（显示屏）",
+    x: 52,
+    y: 45,
+    imageUrl: "./assets/reference/oppo/oppo_bdp93_display_logos.jpg",
+    thumbUrl: "./assets/reference/oppo/oppo_bdp93_display_logos.jpg",
+    sourceUrl:
+      "https://commons.wikimedia.org/wiki/File:SACD_%26_DVD_%26_Dolby_True_HD_%26_DTS-HD_Master_Audio_logos_on_OPPO_BluRay-Player.jpg",
+    license: "CC BY-SA 4.0",
+  },
 ];

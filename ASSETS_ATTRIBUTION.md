@@ -110,3 +110,17 @@ This project includes a small set of **freely licensed** reference screenshots u
 - **License**: CC BY-SA 4.0 (`https://creativecommons.org/licenses/by-sa/4.0/`)
 - **Local file**: `frontend/assets/reference/oppo/oppo_a57_lineageos.jpg`
 
+## OPPO reference screenshots (additional)
+
+- **Title**: *OPPO BDP-93 booting.jpg*
+- **Author**: Bullenwächter
+- **Source**: `https://commons.wikimedia.org/wiki/File:OPPO_BDP-93_booting.jpg`
+- **License**: CC BY-SA 4.0 (`https://creativecommons.org/licenses/by-sa/4.0/`)
+- **Local file**: `frontend/assets/reference/oppo/oppo_bdp93_booting.jpg`
+
+- **Title**: *SACD & DVD & Dolby True HD & DTS-HD Master Audio logos on OPPO BluRay-Player.jpg*
+- **Author**: Bullenwächter (cropped by Pittigrilli per file history)
+- **Source**: `https://commons.wikimedia.org/wiki/File:SACD_%26_DVD_%26_Dolby_True_HD_%26_DTS-HD_Master_Audio_logos_on_OPPO_BluRay-Player.jpg`
+- **License**: CC BY-SA 4.0 (`https://creativecommons.org/licenses/by-sa/4.0/`)
+- **Local file**: `frontend/assets/reference/oppo/oppo_bdp93_display_logos.jpg`
+
