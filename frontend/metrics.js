@@ -1,14 +1,15 @@
 /**
- * 双轴：用于“品牌区分”的可解释视觉特征（0–100）
+ * 双轴（0–100）：既是“一致性关键指标”，也尽量能拉开品牌差异
  *
- * X：形状/圆角风格（越大越“圆润”）
- *   - 由截图中估计的组件中位圆角半径（px）映射得到
+ * X：Token 纪律（颜色 token + 圆角 token 的一致性）
+ * - 近似色对数量（越多说明 token 可能没收敛 / 存在漂移）
+ * - 圆角离群比例（越高说明同类组件圆角 token 不统一）
  *
- * Y：色彩复杂度（越大越“多彩/丰富”）
- *   - 由调色板有效颜色数 + 颜色分布熵（0..1）映射得到
+ * Y：节奏纪律（间距网格 + 排版层级的一致性）
+ * - 网格离群比例（越高说明 spacing token 不统一）
+ * - 字号层级数量（越多说明 typography token 不收敛）
  *
- * 目标：相比用维度分均值（容易把所有品牌都挤到高分区），该坐标系更容易把不同品牌“拉开”
- * 同时仍能解释：圆角 token、色彩 token 的设计取向差异。
+ * 这两轴都与 Apple 的“一致性原则”直接相关；同时在真实产品里也常能区分不同品牌的设计“纪律性”。
  */
 
 export function getDimensionScore(result, dimension) {
@@ -27,28 +28,38 @@ function norm(v, v0, v1) {
 }
 
 export function computeAxesFromFeatures(features) {
-  const ent = Number(features?.palette_entropy_01);
-  const eff = Number(features?.palette_effective_colors);
-  const near = Number(features?.near_color_pairs);
-  const rad = features?.median_radius_px == null ? null : Number(features?.median_radius_px);
+  const nearPairs = Number(features?.near_color_pairs);
+  const comp = features?.component_style || {};
+  const spacing = features?.spacing || {};
+  const typo = features?.typography || {};
 
-  // Shape: 0..24px maps to 0..100 (beyond clamp)
-  const shape01 = norm(rad, 0, 24) ?? 0.35;
+  const radiusOutlier = Number(comp?.outlier_ratio_01);
+  const spacingOutlier = Number(spacing?.outlier_ratio_01);
+  const tierCount = Number(typo?.tier_count);
 
-  // Color complexity:
-  // - effective colors: 1..7 (we cap at 7 from kmeans)
-  // - entropy: 0..1
-  // - near pairs adds a small bump (indicates drift/near-duplicates)
-  const eff01 = norm(eff, 1, 7) ?? 0.35;
-  const ent01 = clamp01(Number.isFinite(ent) ? ent : 0.35);
-  const near01 = clamp01((Number.isFinite(near) ? near : 0) / 10);
-  const color01 = clamp01(0.58 * eff01 + 0.36 * ent01 + 0.06 * near01);
+  // Normalize / defaults
+  const near01 = clamp01((Number.isFinite(nearPairs) ? nearPairs : 0) / 12); // 12+ is "many"
+  const rad01 = clamp01(Number.isFinite(radiusOutlier) ? radiusOutlier : 0);
+  const grid01 = clamp01(Number.isFinite(spacingOutlier) ? spacingOutlier : 0);
+  const tiers01 = clamp01((Number.isFinite(tierCount) ? tierCount : 0) / 14); // 14+ tiers = very fragmented
+
+  // Discipline = 1 - problem ratio
+  const tokenDiscipline01 = clamp01(1 - (0.60 * near01 + 0.40 * rad01));
+  const rhythmDiscipline01 = clamp01(1 - (0.65 * grid01 + 0.35 * tiers01));
 
   return {
-    x: Math.round(shape01 * 1000) / 10,
-    y: Math.round(color01 * 1000) / 10,
-    xLabel: "形状/圆角风格（中位圆角半径）",
-    yLabel: "色彩复杂度（有效色数 + 熵）",
+    x: Math.round(tokenDiscipline01 * 1000) / 10,
+    y: Math.round(rhythmDiscipline01 * 1000) / 10,
+    xLabel: "Token 纪律（颜色/圆角一致性）",
+    yLabel: "节奏 纪律（间距/排版一致性）",
+    explain: {
+      near_color_pairs: Number.isFinite(nearPairs) ? nearPairs : null,
+      radius_outlier_ratio_01: Number.isFinite(radiusOutlier) ? radiusOutlier : null,
+      spacing_outlier_ratio_01: Number.isFinite(spacingOutlier) ? spacingOutlier : null,
+      typography_tier_count: Number.isFinite(tierCount) ? tierCount : null,
+      formula:
+        "X=1-(0.60*nearPairsN + 0.40*radiusOutlier); Y=1-(0.65*gridOutlier + 0.35*tiersN), then map to 0–100",
+    },
   };
 }
 

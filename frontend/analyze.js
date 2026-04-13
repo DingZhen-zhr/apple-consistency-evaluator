@@ -222,6 +222,58 @@ function nearGridGap(gap, base, thr) {
   return { nearest, diff: Math.abs(gap - nearest) };
 }
 
+function spacingMetricsFromRects(rects, width, height, base = 8, thr = 3) {
+  const gaps = [];
+  const ySorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (let i = 0; i < ySorted.length; i++) {
+    const a = ySorted[i];
+    const ay = a.y + a.h / 2;
+    for (let j = i + 1; j < ySorted.length; j++) {
+      const b = ySorted[j];
+      if (b.y - a.y > 140) break;
+      const by = b.y + b.h / 2;
+      if (Math.abs(ay - by) > 48) continue;
+      const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (overlapY <= Math.min(a.h, b.h) * 0.15) continue;
+      if (b.x >= a.x + a.w) {
+        const gap = b.x - (a.x + a.w);
+        if (gap > 0 && gap <= 240) gaps.push({ gap });
+      }
+    }
+  }
+  const xSorted = [...rects].sort((a, b) => a.x - b.x || a.y - b.y);
+  for (let i = 0; i < xSorted.length; i++) {
+    const a = xSorted[i];
+    const ax = a.x + a.w / 2;
+    for (let j = i + 1; j < xSorted.length; j++) {
+      const b = xSorted[j];
+      if (b.x - a.x > 220) break;
+      const bx = b.x + b.w / 2;
+      if (Math.abs(ax - bx) > 56) continue;
+      const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      if (overlapX <= Math.min(a.w, b.w) * 0.15) continue;
+      if (b.y >= a.y + a.h) {
+        const gap = b.y - (a.y + a.h);
+        if (gap > 0 && gap <= 240) gaps.push({ gap });
+      }
+    }
+  }
+
+  let outliers = 0;
+  for (const g of gaps) {
+    const { diff } = nearGridGap(g.gap, base, thr);
+    if (diff >= thr) outliers++;
+  }
+  const outlierRatio = gaps.length ? outliers / gaps.length : 0;
+  return {
+    grid_base_px: base,
+    threshold_px: thr,
+    gaps_total: gaps.length,
+    outliers_total: outliers,
+    outlier_ratio_01: Math.round(outlierRatio * 1000) / 1000,
+  };
+}
+
 function findRectsFromEdges(imageData) {
   const { data, width, height } = imageData;
   const gray = new Uint8Array(width * height);
@@ -451,7 +503,7 @@ function spacingIssuesFromRects(rects, width, height, base = 8, thr = 3) {
   ];
 }
 
-function typographyIssueFromImage(imageData, seed) {
+function typographyFromImage(imageData, seed) {
   const { data, width, height } = imageData;
   const gray = new Uint8Array(width * height);
   for (let i = 0, p = 0; p < width * height; p++, i += 4) {
@@ -547,7 +599,17 @@ function typographyIssueFromImage(imageData, seed) {
       blobs.push({ x: minX, y: minY, w: bw, h: bh2, area, count: cnt, fill });
     }
   }
-  if (blobs.length < 25) return [];
+  if (blobs.length < 25) {
+    return {
+      issues: [],
+      metrics: {
+        tier_count: 0,
+        tier_merge_px: null,
+        blob_count: blobs.length,
+        note: "可疑文本连通域过少，无法稳定估计字号层级。",
+      },
+    };
+  }
 
   // Robust tiering:
   // - merge by relative tolerance (larger text allows larger merges)
@@ -574,7 +636,16 @@ function typographyIssueFromImage(imageData, seed) {
     .filter((t) => t.c >= 3)
     .map((t) => Math.round(t.v));
 
-  if (tiers.length <= 6) return [];
+  const metrics = {
+    tier_count: tiers.length,
+    tier_merge_px: mergePx,
+    blob_count: blobs.length,
+    estimated_size_tiers_px: tiers.slice(0, 20),
+  };
+
+  if (tiers.length <= 6) {
+    return { issues: [], metrics };
+  }
 
   const tiersArr = new Int32Array(tiers);
   const diffs = blobs.map((b) => {
@@ -591,21 +662,23 @@ function typographyIssueFromImage(imageData, seed) {
   });
   diffs.sort((a, b) => b.d - a.d);
   const top = diffs.slice(0, 12).map((x) => x.b);
-  return [
-    {
-      id: `TypographyConsistency-${hashString("tiers" + tiers.length + seed)}`,
-      dimension: "TypographyConsistency",
-      severity: "medium",
-      title: "检测到过多的字号层级（截图中疑似存在过多不同的文本高度）",
-      evidence: {
-        estimated_size_tiers_px: tiers.slice(0, 20),
-        tier_count: tiers.length,
-        note: "该检测不依赖 OCR，仅用“文本笔画形态 + 连通域高度”估计字号层级；可能把图标/细线误判为文本。",
+  return {
+    issues: [
+      {
+        id: `TypographyConsistency-${hashString("tiers" + tiers.length + seed)}`,
+        dimension: "TypographyConsistency",
+        severity: "medium",
+        title: "检测到过多的字号层级（截图中疑似存在过多不同的文本高度）",
+        evidence: {
+          ...metrics,
+          note: "该检测不依赖 OCR，仅用“文本笔画形态 + 连通域高度”估计字号层级；可能把图标/细线误判为文本。",
+        },
+        suggestion: "把文本层级收敛到更少的 token（例如 Title/Body/Caption 等 3-5 档），并确保同语义文本在不同模块复用同一字号/字重组合。",
+        bboxes: top.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
       },
-      suggestion: "把文本层级收敛到更少的 token（例如 Title/Body/Caption 等 3-5 档），并确保同语义文本在不同模块复用同一字号/字重组合。",
-      bboxes: top.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
-    },
-  ];
+    ],
+    metrics,
+  };
 }
 
 function boxBlurGray(src, w, h, r) {
@@ -723,7 +796,7 @@ function medianCornerRadiusFromPatch(imageData, x0, y0, rw, rh) {
   return vals[(vals.length / 2) | 0];
 }
 
-function componentStyleIssueFromRects(imageData, rects) {
+function componentStyleFromRects(imageData, rects) {
   const maxArea = (imageData.width * imageData.height * 0.22) | 0;
   const cand = rects
     .filter((r) => r.area >= 1600 && r.area <= maxArea)
@@ -741,7 +814,12 @@ function componentStyleIssueFromRects(imageData, rects) {
     radii.push(rad);
     samples.push({ bbox: r, radius_px: rad });
   }
-  if (radii.length < 10) return [];
+  if (radii.length < 10) {
+    return {
+      issues: [],
+      metrics: { radius_median_px: null, radius_mad_px: null, outlier_ratio_01: 0, sample_count: samples.length, outlier_count: 0 },
+    };
+  }
 
   radii.sort((a, b) => a - b);
   const median = radii[(radii.length / 2) | 0];
@@ -751,27 +829,43 @@ function componentStyleIssueFromRects(imageData, rects) {
   })();
   const tol = Math.max(3, 2 + mad);
   const out = samples.filter((s) => Math.abs(s.radius_px - median) >= tol);
-  if (!out.length) return [];
+  const outlierRatio = samples.length ? out.length / samples.length : 0;
+
+  const metrics = {
+    radius_median_px: Math.round(median * 10) / 10,
+    radius_mad_px: Math.round(mad * 10) / 10,
+    outlier_tolerance_px: Math.round(tol * 10) / 10,
+    sample_count: samples.length,
+    outlier_count: out.length,
+    outlier_ratio_01: Math.round(outlierRatio * 1000) / 1000,
+  };
+
+  if (!out.length) return { issues: [], metrics };
+
   out.sort((a, b) => Math.abs(b.radius_px - median) - Math.abs(a.radius_px - median));
   const top = out.slice(0, 12);
-  return [
-    {
-      id: `ComponentStyleConsistency-${hashString("rad" + median + tol)}`,
-      dimension: "ComponentStyleConsistency",
-      severity: "medium",
-      title: "检测到组件圆角风格不一致（疑似存在圆角半径离群点）",
-      evidence: {
-        radius_median_px: median,
-        radius_mad_px: mad,
-        outlier_tolerance_px: tol,
-        sample_count: samples.length,
-        outlier_examples: top.map((s) => ({ radius_px: s.radius_px })),
-        note: "该检测是截图启发式估计：用组件 bbox 内角落像素与背景的差异推测圆角半径。",
+  return {
+    issues: [
+      {
+        id: `ComponentStyleConsistency-${hashString("rad" + median + tol)}`,
+        dimension: "ComponentStyleConsistency",
+        severity: "medium",
+        title: "检测到组件圆角风格不一致（疑似存在圆角半径离群点）",
+        evidence: {
+          ...metrics,
+          outlier_examples: top.map((s) => ({ radius_px: s.radius_px })),
+          note: "该检测是截图启发式估计：用组件 bbox 内角落像素与背景的差异推测圆角半径。",
+        },
+        suggestion: `为同一类组件统一圆角 token（例如统一到 ~${Math.round(median)}px），避免同屏出现多个接近但不同的圆角半径（会破坏一致性）。`,
+        bboxes: top.map((s) => ({ x: s.bbox.x, y: s.bbox.y, w: s.bbox.w, h: s.bbox.h })),
       },
-      suggestion: `为同一类组件统一圆角 token（例如统一到 ~${median}px），避免同屏出现多个接近但不同的圆角半径（会破坏一致性）。`,
-      bboxes: top.map((s) => ({ x: s.bbox.x, y: s.bbox.y, w: s.bbox.w, h: s.bbox.h })),
-    },
-  ];
+    ],
+    metrics,
+  };
+}
+
+function componentStyleIssueFromRects(imageData, rects) {
+  return componentStyleFromRects(imageData, rects).issues;
 }
 
 function dominantColorRgbFromBytes(bytes) {
@@ -899,9 +993,13 @@ export async function analyzeFiles(files, { seed = 42 } = {}) {
 
     // rects shared
     const rects = findRectsFromEdges(imageData);
-    screenIssues.push(...spacingIssuesFromRects(rects, bmp.width, bmp.height, 8, 3));
-    screenIssues.push(...typographyIssueFromImage(imageData, seed + idx));
-    screenIssues.push(...componentStyleIssueFromRects(imageData, rects));
+    const spacingIssues = spacingIssuesFromRects(rects, bmp.width, bmp.height, 8, 3);
+    const spacingMetrics = spacingMetricsFromRects(rects, bmp.width, bmp.height, 8, 3);
+    screenIssues.push(...spacingIssues);
+    const typo = typographyFromImage(imageData, seed + idx);
+    screenIssues.push(...typo.issues);
+    const comp = componentStyleFromRects(imageData, rects);
+    screenIssues.push(...comp.issues);
 
     issuesAll.push(...screenIssues);
     const medRadius = medianRadiusFromImage(imageData, rects);
@@ -917,6 +1015,9 @@ export async function analyzeFiles(files, { seed = 42 } = {}) {
         palette_entropy_01: Math.round(ent * 1000) / 1000,
         near_color_pairs: near.length,
         median_radius_px: medRadius,
+        spacing: spacingMetrics,
+        typography: typo.metrics,
+        component_style: comp.metrics,
       },
     });
   }
@@ -1132,6 +1233,31 @@ export async function buildReportHtml({ result, filename, imageBitmap }) {
     )
     .join("\n");
 
+  const axesExplain = (() => {
+    const f = result?.meta?.per_screen?.[0]?.features;
+    if (!f) return "";
+    const spacing = f.spacing || {};
+    const typo = f.typography || {};
+    const comp = f.component_style || {};
+    const lines = [
+      `<div style="font-weight:800;margin-bottom:8px">双轴解释（用于品牌图谱）</div>`,
+      `<div style="font-size:13px;color:#444">X：Token 纪律（颜色/圆角一致性），Y：节奏纪律（间距/排版一致性）。</div>`,
+      `<pre style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px;font-size:12px;margin-top:10px">${esc(
+        JSON.stringify(
+          {
+            near_color_pairs: f.near_color_pairs,
+            component_style: comp,
+            spacing,
+            typography: typo,
+          },
+          null,
+          2,
+        ),
+      )}</pre>`,
+    ];
+    return `<div class="card" style="margin-top:16px">${lines.join("")}</div>`;
+  })();
+
   const rectsSvg = allBoxes
     .map((b) => `<rect class="box" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"></rect>`)
     .join("\n");
@@ -1177,6 +1303,8 @@ export async function buildReportHtml({ result, filename, imageBitmap }) {
       <div style="font-weight:700;margin-bottom:8px">维度得分</div>
       ${dimsHtml}
     </div>
+
+    ${axesExplain}
 
     <div class="card">
       <div style="font-weight:700;margin-bottom:8px">问题与标注</div>

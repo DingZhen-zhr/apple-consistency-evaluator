@@ -53,6 +53,21 @@ function renderResult(result) {
 
     issues.appendChild(card);
   }
+
+  // Axis explain (for user upload)
+  const axes = computeScatterAxes(result);
+  const hint = $("hint");
+  if (hint && axes?.explain) {
+    const e = axes.explain;
+    const lines = [
+      `双轴解释（本次上传）：X=${axes.x.toFixed(1)}（Token纪律），Y=${axes.y.toFixed(1)}（节奏纪律）`,
+      `- 近似色对：${e.near_color_pairs ?? "—"}（越多越不一致）`,
+      `- 圆角离群比例：${e.radius_outlier_ratio_01 ?? "—"}（越高越不一致）`,
+      `- 网格离群比例：${e.spacing_outlier_ratio_01 ?? "—"}（越高越不一致）`,
+      `- 字号层级数：${e.typography_tier_count ?? "—"}（越多越不一致）`,
+    ];
+    hint.innerHTML = `${escapeHtml(lines.join("\n"))}`.replaceAll("\n", "<br/>");
+  }
 }
 
 let __lastDownloadUrls = [];
@@ -402,6 +417,9 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+// Make available for renderResult() which may run early.
+// (Not exported; just prevents accidental ReferenceError when refactoring.)
 
 function computeBrandAverages(examples) {
   const by = new Map();
