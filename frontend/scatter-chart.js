@@ -1,10 +1,12 @@
-import { REFERENCE_POINTS } from "./reference-points.js";
-
 const APPLE_ZONE = { x0: 70, y0: 70, x1: 100, y1: 100 };
 
 /**
  * @param {HTMLElement} container
- * @param {{ appleThreshold?: number, onSelectionChange?: (sel: { kind: 'user'|'reference'|'none', id: string|null }) => void }} options
+ * @param {{
+ *   appleThreshold?: number,
+ *   referencePoints?: Array<{ id: string, x: number, y: number, label: string, brand?: string, thumbUrl?: string }>,
+ *   onSelectionChange?: (sel: { kind: 'user'|'reference'|'none', id: string|null }) => void
+ * }} options
  */
 export function createScatterChart(container, options = {}) {
   const appleThreshold = options.appleThreshold ?? 70;
@@ -22,6 +24,7 @@ export function createScatterChart(container, options = {}) {
   inner.appendChild(svg);
   container.appendChild(inner);
 
+  let referencePoints = Array.isArray(options.referencePoints) ? options.referencePoints : [];
   let userPoints = [];
   let selectedId = null;
   let selectedKind = "none";
@@ -40,12 +43,6 @@ export function createScatterChart(container, options = {}) {
   }
   function dataY(y) {
     return padT + (1 - y / 100) * innerH;
-  }
-
-  function hitDistance(px, py, cx, cy) {
-    const dx = px - cx;
-    const dy = py - cy;
-    return Math.sqrt(dx * dx + dy * dy);
   }
 
   let clickBound = false;
@@ -146,30 +143,50 @@ export function createScatterChart(container, options = {}) {
       svg.appendChild(ty);
     }
 
-    // Reference points
-    for (const p of REFERENCE_POINTS) {
+    // Reference points (below user points)
+    for (const p of referencePoints) {
       const cx = dataX(p.x);
       const cy = dataY(p.y);
       const g = document.createElementNS(svg.namespaceURI, "g");
       g.setAttribute("data-ref-id", p.id);
       g.style.cursor = "pointer";
 
-      const c = document.createElementNS(svg.namespaceURI, "circle");
-      c.setAttribute("cx", String(cx));
-      c.setAttribute("cy", String(cy));
-      c.setAttribute("r", selectedKind === "reference" && selectedId === p.id ? "9" : "7");
-      c.setAttribute("fill", "rgba(10,132,255,0.35)");
-      c.setAttribute("stroke", "#0a84ff");
-      c.setAttribute("stroke-width", selectedKind === "reference" && selectedId === p.id ? "2.5" : "1.5");
-      g.appendChild(c);
+      const isSel = selectedKind === "reference" && selectedId === p.id;
+      const thumb = p.thumbUrl;
+      if (thumb) {
+        const clipId = `clip-ref-${p.id}`;
+        const cd = document.createElementNS(svg.namespaceURI, "defs");
+        cd.innerHTML = `<clipPath id="${clipId}"><circle cx="${cx}" cy="${cy}" r="13"/></clipPath>`;
+        g.appendChild(cd);
+        const img = document.createElementNS(svg.namespaceURI, "image");
+        img.setAttribute("href", thumb);
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", thumb);
+        img.setAttribute("x", String(cx - 13));
+        img.setAttribute("y", String(cy - 13));
+        img.setAttribute("width", "26");
+        img.setAttribute("height", "26");
+        img.setAttribute("clip-path", `url(#${clipId})`);
+        img.setAttribute("preserveAspectRatio", "xMidYMid slice");
+        g.appendChild(img);
+      }
+      const ring = document.createElementNS(svg.namespaceURI, "circle");
+      ring.setAttribute("cx", String(cx));
+      ring.setAttribute("cy", String(cy));
+      ring.setAttribute("r", thumb ? "13" : (isSel ? "9" : "7"));
+      ring.setAttribute("fill", thumb ? "none" : "rgba(10,132,255,0.35)");
+      ring.setAttribute("stroke", "#0a84ff");
+      ring.setAttribute("stroke-width", isSel ? "3" : "1.8");
+      g.appendChild(ring);
 
-      const lab = document.createElementNS(svg.namespaceURI, "text");
-      lab.setAttribute("x", String(cx + 10));
-      lab.setAttribute("y", String(cy - 8));
-      lab.setAttribute("fill", "rgba(241,241,246,0.75)");
-      lab.setAttribute("font-size", "10");
-      lab.textContent = p.label;
-      g.appendChild(lab);
+      if (isSel) {
+        const lab = document.createElementNS(svg.namespaceURI, "text");
+        lab.setAttribute("x", String(cx + 14));
+        lab.setAttribute("y", String(cy - 10));
+        lab.setAttribute("fill", "rgba(241,241,246,0.88)");
+        lab.setAttribute("font-size", "11");
+        lab.textContent = (p.brand ? `${p.brand} · ` : "") + (p.label || "");
+        g.appendChild(lab);
+      }
 
       g.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -225,13 +242,15 @@ export function createScatterChart(container, options = {}) {
         g.appendChild(c);
       }
 
-      const lab = document.createElementNS(svg.namespaceURI, "text");
-      lab.setAttribute("x", String(cx + 16));
-      lab.setAttribute("y", String(cy + 4));
-      lab.setAttribute("fill", "rgba(241,241,246,0.9)");
-      lab.setAttribute("font-size", "11");
-      lab.textContent = p.label || "我的截图";
-      g.appendChild(lab);
+      if (isSel) {
+        const lab = document.createElementNS(svg.namespaceURI, "text");
+        lab.setAttribute("x", String(cx + 18));
+        lab.setAttribute("y", String(cy + 4));
+        lab.setAttribute("fill", "rgba(241,241,246,0.92)");
+        lab.setAttribute("font-size", "12");
+        lab.textContent = p.label || "我的截图";
+        g.appendChild(lab);
+      }
 
       g.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -263,6 +282,11 @@ export function createScatterChart(container, options = {}) {
     render();
   }
 
+  function setReferencePoints(points) {
+    referencePoints = Array.isArray(points) ? points : [];
+    render();
+  }
+
   function getSelection() {
     return { kind: selectedKind, id: selectedId };
   }
@@ -271,6 +295,7 @@ export function createScatterChart(container, options = {}) {
 
   return {
     setUserPoints,
+    setReferencePoints,
     getSelection,
     /** @param {'user'|'reference'|'none'} kind */
     clearSelection(kind = "none") {

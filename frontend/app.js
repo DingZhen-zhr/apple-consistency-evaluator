@@ -2,6 +2,7 @@ import { analyzeFiles, buildReportHtml } from "./analyze.js";
 import { computeScatterAxes } from "./metrics.js";
 import { loadUserPoints, addUserPoint, removeUserPoint } from "./storage.js";
 import { createScatterChart } from "./scatter-chart.js";
+import { REFERENCE_POINTS } from "./reference-points.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -209,6 +210,7 @@ const btnDeletePoint = $("btnDeletePoint");
 const scatterSelectionHint = $("scatterSelectionHint");
 
 const scatterChart = createScatterChart(scatterMount, {
+  referencePoints: [],
   onSelectionChange: (sel) => {
     if (sel.kind === "user") {
       btnDeletePoint.disabled = false;
@@ -223,6 +225,111 @@ const scatterChart = createScatterChart(scatterMount, {
   },
 });
 scatterChart.setUserPoints(loadUserPoints());
+
+const REF_CACHE_KEY = "apple-consistency-refcache-v1";
+
+function loadRefCache() {
+  try {
+    const raw = localStorage.getItem(REF_CACHE_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveRefCache(cache) {
+  try {
+    localStorage.setItem(REF_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchAsFile(url, fallbackName) {
+  const res = await fetch(url, { cache: "force-cache" });
+  if (!res.ok) throw new Error(`无法加载参考图片：${url}（${res.status}）`);
+  const blob = await res.blob();
+  const name = fallbackName || url.split("/").pop() || "reference.png";
+  return new File([blob], name, { type: blob.type || "image/png" });
+}
+
+async function initReferencePoints() {
+  const cache = loadRefCache();
+  const out = [];
+  for (const ref of REFERENCE_POINTS) {
+    const cached = cache[ref.id];
+    const now = Date.now();
+    const isFresh = cached && typeof cached === "object" && now - (cached.computedAt || 0) < 30 * 24 * 3600 * 1000;
+    if (isFresh && typeof cached.x === "number" && typeof cached.y === "number") {
+      out.push({ ...ref, x: cached.x, y: cached.y });
+      continue;
+    }
+    try {
+      const f = await fetchAsFile(ref.imageUrl, `${ref.id}.png`);
+      const payload = await analyzeFiles([f], { seed: 42 });
+      const result = {
+        principle: payload.principle,
+        overall_score: payload.overall_score,
+        dimension_scores: payload.dimension_scores,
+        issues: payload.issues,
+        meta: payload.meta,
+      };
+      const axes = computeScatterAxes(result);
+      cache[ref.id] = { x: axes.x, y: axes.y, computedAt: Date.now(), overall_score: result.overall_score };
+      out.push({ ...ref, x: axes.x, y: axes.y });
+    } catch (e) {
+      console.warn("reference analyze failed", ref.id, e);
+      out.push(ref);
+    }
+  }
+  saveRefCache(cache);
+  scatterChart.setReferencePoints(out);
+  renderRefGallery(out);
+}
+
+initReferencePoints().catch((e) => console.warn(e));
+
+function renderRefGallery(points) {
+  const mount = $("refGallery");
+  if (!mount) return;
+  mount.innerHTML = "";
+  for (const p of points) {
+    const card = document.createElement("div");
+    card.className = "refCard";
+
+    const img = document.createElement("img");
+    img.className = "refThumb";
+    img.alt = p.label || "参考界面";
+    img.loading = "lazy";
+    img.src = p.thumbUrl || p.imageUrl || "";
+    card.appendChild(img);
+
+    const meta = document.createElement("div");
+    meta.className = "refMeta";
+    const title = document.createElement("div");
+    title.className = "refTitle";
+    title.textContent = (p.brand ? `${p.brand} · ` : "") + (p.label || "");
+    meta.appendChild(title);
+
+    const sub = document.createElement("div");
+    sub.className = "refSub";
+    sub.textContent = `坐标：(${Number(p.x).toFixed(1)}, ${Number(p.y).toFixed(1)})`;
+    meta.appendChild(sub);
+
+    const a = document.createElement("a");
+    a.className = "refLink";
+    a.href = p.sourceUrl || "#";
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = p.license ? `来源与许可：${p.license}` : "来源";
+    meta.appendChild(a);
+
+    card.appendChild(meta);
+    mount.appendChild(card);
+  }
+}
 
 btnDeletePoint.addEventListener("click", () => {
   const sel = scatterChart.getSelection();

@@ -77,7 +77,6 @@ function sampleImagePixels(imageData, maxSamples, seed) {
   const { data, width, height } = imageData;
   const total = width * height;
   const want = clamp(maxSamples | 0, 1000, 60000);
-  const rnd = mulberry32(seed);
   const out = new Uint8Array(want * 3);
   if (total <= want) {
     let o = 0;
@@ -89,7 +88,31 @@ function sampleImagePixels(imageData, maxSamples, seed) {
     }
     return { bytes: out, count: total, width, height };
   }
-  for (let k = 0; k < want; k++) {
+  // Prefer stratified sampling over pure random sampling:
+  // - more stable between runs
+  // - less likely to miss small but important regions (icons/text)
+  const rnd = mulberry32(seed);
+  const padX = Math.max(0, Math.round(width * 0.03));
+  const padY = Math.max(0, Math.round(height * 0.03));
+  const w2 = Math.max(1, width - padX * 2);
+  const h2 = Math.max(1, height - padY * 2);
+  const grid = Math.max(1, Math.floor(Math.sqrt(want)));
+  let k = 0;
+  for (let gy = 0; gy < grid && k < want; gy++) {
+    for (let gx = 0; gx < grid && k < want; gx++) {
+      const jx = (rnd() - 0.5) * 0.8;
+      const jy = (rnd() - 0.5) * 0.8;
+      const x = padX + Math.min(w2 - 1, Math.max(0, Math.floor(((gx + 0.5 + jx) / grid) * w2)));
+      const y = padY + Math.min(h2 - 1, Math.max(0, Math.floor(((gy + 0.5 + jy) / grid) * h2)));
+      const i = (y * width + x) * 4;
+      out[k * 3 + 0] = data[i];
+      out[k * 3 + 1] = data[i + 1];
+      out[k * 3 + 2] = data[i + 2];
+      k++;
+    }
+  }
+  // If want is not a perfect square, fill the remainder with random picks.
+  for (; k < want; k++) {
     const p = (rnd() * total) | 0;
     const i = p * 4;
     out[k * 3 + 0] = data[i];

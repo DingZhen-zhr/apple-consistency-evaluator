@@ -40,10 +40,20 @@
           横轴为<strong>视觉与组件一致性</strong>（色彩 token、圆角等），纵轴为<strong>布局与信息层级一致性</strong>（间距网格、字号层级）。
           绿色区域表示与 <strong>Apple 一致性原则</strong>高度相符的重叠区（双轴得分均较高）。蓝点为系统参考界面示意，橙点为你的上传记录。
         </p>
+        <div class="chartLegend">
+          <span class="legendItem"><span class="dot ref"></span>参考界面（不可删除）</span>
+          <span class="legendItem"><span class="dot user"></span>我的上传（可删除）</span>
+          <span class="legendItem"><span class="dot zone"></span>Apple 一致区</span>
+        </div>
         <div id="scatterMount" class="scatterMount"></div>
         <div class="chartToolbar">
           <button id="btnDeletePoint" type="button" class="btn secondary" disabled>删除选中的我的上传</button>
           <span id="scatterSelectionHint" class="hint"></span>
+        </div>
+        <div class="refGalleryWrap">
+          <div class="sectionTitle" style="margin-top: 10px">参考界面素材</div>
+          <div id="refGallery" class="refGallery"></div>
+          <div class="hint">注：参考界面素材均为可再分发许可；署名与许可见仓库 `ASSETS_ATTRIBUTION.md`。</div>
         </div>
       </section>
 
