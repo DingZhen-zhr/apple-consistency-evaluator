@@ -42,3 +42,8 @@ export function removeUserPoint(id) {
   saveUserPoints(cur);
   return cur;
 }
+
+export function clearUserPoints() {
+  saveUserPoints([]);
+  return [];
+}

@@ -1258,6 +1258,26 @@ export async function buildReportHtml({ result, filename, imageBitmap }) {
     return `<div class="card" style="margin-top:16px">${lines.join("")}</div>`;
   })();
 
+  const aiExplain = (() => {
+    const md = result?.ai?.markdown;
+    const js = result?.ai?.data;
+    if (!md && !js) return "";
+    const lines = [
+      `<div style="font-weight:800;margin-bottom:8px">AI 详细原因分析（增强）</div>`,
+      md
+        ? `<pre style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px;font-size:12px;margin-top:10px">${esc(
+            md,
+          )}</pre>`
+        : "",
+      js
+        ? `<details style="margin-top:10px"><summary style="cursor:pointer;color:#444">结构化 JSON（展开）</summary><pre style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px;font-size:12px">${esc(
+            JSON.stringify(js, null, 2),
+          )}</pre></details>`
+        : "",
+    ];
+    return `<div class="card" style="margin-top:16px">${lines.join("")}</div>`;
+  })();
+
   const rectsSvg = allBoxes
     .map((b) => `<rect class="box" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"></rect>`)
     .join("\n");
@@ -1304,6 +1324,7 @@ export async function buildReportHtml({ result, filename, imageBitmap }) {
       ${dimsHtml}
     </div>
 
+    ${aiExplain}
     ${axesExplain}
 
     <div class="card">

@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile
+from fastapi import HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
@@ -21,6 +22,9 @@ from app.models import AnalysisResult
 from app.multi_screen import cross_screen_issues
 from app.reporting.report import render_report
 from app.scoring import score_dimensions, score_overall
+
+from app.ai.schemas import AiExplainRequest
+from app.ai.explain import explain_with_ai
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +66,18 @@ def index():
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/api/ai/explain")
+async def ai_explain(req: AiExplainRequest):
+    try:
+        resp = await explain_with_ai(req)
+        return resp.model_dump()
+    except RuntimeError as e:
+        # Most likely missing env vars.
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI explain failed: {e}")
 
 
 @app.post("/api/analyze")

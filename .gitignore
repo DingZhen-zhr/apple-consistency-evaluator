@@ -3,3 +3,5 @@ backend/__pycache__/
 backend/app/__pycache__/
 runs/
 **/*.pyc
+.env
+backend/.env

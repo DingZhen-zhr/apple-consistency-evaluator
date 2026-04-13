@@ -1,6 +1,6 @@
 import { analyzeFiles, buildReportHtml } from "./analyze.js";
 import { computeScatterAxes } from "./metrics.js";
-import { loadUserPoints, addUserPoint, removeUserPoint } from "./storage.js";
+import { loadUserPoints, addUserPoint, removeUserPoint, clearUserPoints } from "./storage.js";
 import { createScatterChart } from "./scatter-chart.js";
 import { loadPhotoManifest, groupImagesByBrand } from "./brand-dataset.js";
 import { REFERENCE_POINTS } from "./reference-points.js";
@@ -107,6 +107,8 @@ async function analyze() {
   };
 
   renderResult(result);
+  __lastResult = result;
+  __lastPayload = payload;
 
   const axes = computeScatterAxes(result);
   let thumbDataUrl = "";
@@ -135,6 +137,7 @@ async function analyze() {
       },
     });
     scatterChart.setUserPoints(loadUserPoints());
+    renderUploadsList();
   } catch (err) {
     console.warn(err);
     alert(err?.message || String(err));
@@ -151,7 +154,7 @@ async function analyze() {
       return;
     }
     const html = await buildReportHtml({
-      result,
+      result: __lastResult || result,
       filename: payload.first_file?.name || "upload.png",
       imageBitmap: payload.first_bitmap,
     });
@@ -163,7 +166,7 @@ async function analyze() {
   $("btnJson").disabled = false;
   $("btnJson").onclick = () => {
     revokeLastDownloads();
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json;charset=utf-8" });
+    const blob = new Blob([JSON.stringify(__lastResult || result, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     __lastDownloadUrls.push(url);
     const a = document.createElement("a");
@@ -224,6 +227,13 @@ const scatterMount = $("scatterMount");
 const btnDeletePoint = $("btnDeletePoint");
 const scatterSelectionHint = $("scatterSelectionHint");
 const datasetStatus = $("datasetStatus");
+const uploadsList = $("uploadsList");
+const btnClearUploads = $("btnClearUploads");
+const btnAi = $("btnAi");
+const aiBlock = $("aiBlock");
+
+let __lastResult = null;
+let __lastPayload = null;
 
 const scatterChart = createScatterChart(scatterMount, {
   brandPoints: [],
@@ -246,6 +256,7 @@ const scatterChart = createScatterChart(scatterMount, {
   },
 });
 scatterChart.setUserPoints(loadUserPoints());
+renderUploadsList();
 
 const REF_CACHE_KEY = "apple-consistency-brandcache-v1";
 const __brandPointById = new Map();
@@ -585,5 +596,104 @@ btnDeletePoint.addEventListener("click", () => {
   const next = removeUserPoint(sel.id);
   scatterChart.setUserPoints(next);
   scatterChart.clearSelection("none");
+  renderUploadsList();
 });
+
+btnClearUploads?.addEventListener?.("click", () => {
+  if (!confirm("确定要清空所有“我的上传记录”吗？此操作不可撤销（只影响本机浏览器）。")) return;
+  clearUserPoints();
+  scatterChart.setUserPoints(loadUserPoints());
+  scatterChart.clearSelection("none");
+  renderUploadsList();
+});
+
+function renderUploadsList() {
+  if (!uploadsList) return;
+  const points = loadUserPoints().slice().reverse();
+  uploadsList.innerHTML = "";
+  if (points.length === 0) {
+    uploadsList.innerHTML = `<div class="hint">暂无上传记录。</div>`;
+    return;
+  }
+  for (const p of points) {
+    const row = document.createElement("div");
+    row.className = "uploadRow";
+
+    const img = document.createElement("img");
+    img.className = "uploadThumb";
+    img.alt = p.label || "上传截图";
+    img.loading = "lazy";
+    img.src = p.thumbDataUrl || "";
+    row.appendChild(img);
+
+    const meta = document.createElement("div");
+    meta.className = "uploadMeta";
+    const title = document.createElement("div");
+    title.className = "uploadTitle";
+    title.textContent = p.label || "我的截图";
+    meta.appendChild(title);
+    const sub = document.createElement("div");
+    sub.className = "uploadSub";
+    sub.textContent = `坐标：(${Number(p.x).toFixed(1)}, ${Number(p.y).toFixed(1)}) · 总分：${Number(p.overall_score).toFixed(1)}`;
+    meta.appendChild(sub);
+    row.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "uploadActions";
+    const del = document.createElement("button");
+    del.className = "btn secondary";
+    del.type = "button";
+    del.textContent = "删除";
+    del.addEventListener("click", () => {
+      removeUserPoint(p.id);
+      scatterChart.setUserPoints(loadUserPoints());
+      scatterChart.clearSelection("none");
+      renderUploadsList();
+    });
+    actions.appendChild(del);
+    row.appendChild(actions);
+
+    uploadsList.appendChild(row);
+  }
+}
+
+btnAi?.addEventListener?.("click", () => {
+  runAiExplain().catch((e) => {
+    console.error(e);
+    alert(`AI 分析失败：${e.message || e}`);
+  });
+});
+
+async function runAiExplain() {
+  if (!__lastResult || !__lastPayload?.first_bitmap) {
+    alert("请先完成一次评估（上传并点击“开始评估”），再运行 AI 增强分析。");
+    return;
+  }
+  const apiBase = (window.__API_BASE__ || "").replace(/\\/+$/, "");
+  if (!apiBase) {
+    alert("当前为纯静态模式，未配置后端 API，因此无法调用 AI。请在本地启动 backend 并设置 PUBLIC_API_BASE 指向它。");
+    return;
+  }
+  if (aiBlock) aiBlock.innerHTML = `<div class="hint">AI 正在生成详尽原因分析…</div>`;
+
+  const imageDataUrl = await bitmapToThumbDataUrl(__lastPayload.first_bitmap, 560);
+  const body = {
+    principle: __lastResult.principle,
+    goal: "评估是否符合 Apple 一致性原则（Consistency）并给出可执行改进建议",
+    result: __lastResult,
+    image_data_url: imageDataUrl,
+  };
+  const res = await fetch(`${apiBase}/api/ai/explain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  __lastResult.ai = data;
+
+  if (aiBlock) {
+    aiBlock.innerHTML = `<pre>${escapeHtml(data?.markdown || JSON.stringify(data, null, 2))}</pre>`;
+  }
+}
 

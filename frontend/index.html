@@ -26,11 +26,29 @@
         <div class="row">
           <input id="file" type="file" accept="image/*" multiple />
           <button id="btn" class="btn">开始评估</button>
+          <button id="btnAi" class="btn secondary" type="button">AI 增强分析</button>
           <button id="btnReport" class="btn secondary" disabled>打开 HTML 报告</button>
           <button id="btnJson" class="btn secondary" disabled>下载 result.json</button>
         </div>
         <div id="hint" class="hint">
           提示：支持多图上传，会额外生成跨屏一致性问题。评估后会在下方散点图中落点（仅保存在本机浏览器）。
+        </div>
+      </section>
+
+      <section class="grid" style="margin-top:14px">
+        <div class="card">
+          <div class="sectionTitle">我的上传记录</div>
+          <div class="row" style="margin-bottom:10px">
+            <button id="btnClearUploads" class="btn secondary" type="button">清空我的上传</button>
+            <span class="hint">可从这里直接删除，不依赖图上点选。</span>
+          </div>
+          <div id="uploadsList" class="uploadsList"></div>
+        </div>
+        <div class="card">
+          <div class="sectionTitle">AI 详细原因分析</div>
+          <div id="aiBlock" class="aiBlock">
+            <div class="hint">未运行 AI 增强分析。点击上方「AI 增强分析」生成更详尽的文字解释与可执行建议。</div>
+          </div>
         </div>
       </section>
 
