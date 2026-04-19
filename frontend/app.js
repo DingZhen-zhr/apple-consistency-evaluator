@@ -3,7 +3,7 @@ import { computeScatterAxes } from "./metrics.js";
 import { loadUserPoints, addUserPoint, removeUserPoint, clearUserPoints } from "./storage.js";
 import { createScatterChart } from "./scatter-chart.js";
 import { loadPhotoManifest, groupImagesByBrand } from "./brand-dataset.js";
-import { REFERENCE_POINTS } from "./reference-points.js";
+import { REFERENCE_POINTS, loadReferenceData } from "./reference-points.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -60,11 +60,13 @@ function renderResult(result) {
   if (hint && axes?.explain) {
     const e = axes.explain;
     const lines = [
-      `双轴解释（本次上传）：X=${axes.x.toFixed(1)}（Token纪律），Y=${axes.y.toFixed(1)}（节奏纪律）`,
-      `- 近似色对：${e.near_color_pairs ?? "—"}（越多越不一致）`,
-      `- 圆角离群比例：${e.radius_outlier_ratio_01 ?? "—"}（越高越不一致）`,
-      `- 网格离群比例：${e.spacing_outlier_ratio_01 ?? "—"}（越高越不一致）`,
-      `- 字号层级数：${e.typography_tier_count ?? "—"}（越多越不一致）`,
+      `双轴解释：X=${axes.x.toFixed(1)}（Clarity 清晰度），Y=${axes.y.toFixed(1)}（Consistency 一致性）`,
+      `- Clarity（清晰度）：${e.clarity_score ?? "—"}`,
+      `- 颜色一致性：${e.color_score ?? "—"}`,
+      `- 间距网格：${e.spacing_score ?? "—"}`,
+      `- 圆角风格：${e.corner_score ?? "—"}`,
+      `- 排版层级：${e.typo_score ?? "—"}`,
+      `公式：${e.formula || ""}`,
     ];
     hint.innerHTML = `${escapeHtml(lines.join("\n"))}`.replaceAll("\n", "<br/>");
   }
@@ -297,9 +299,21 @@ async function initBrandDataset() {
   const out = [];
   const now = Date.now();
   const maxAgeMs = 30 * 24 * 3600 * 1000;
+  const totalToAnalyze = images?.length || 0;
+  let analyzed = 0;
 
-  // Fallback to bundled reference points if no `photos/` dataset is present.
-  if (!images || images.length === 0) {
+  // Try loading pre-computed reference data from batch_analyze.py
+  const refData = await loadReferenceData();
+  if (refData && refData.length > 0) {
+    for (const r of refData) out.push(r);
+    setDatasetStatus({
+      phase: "ready",
+      total: refData.length,
+      brands: new Set(refData.map((r) => r.brand)).size,
+      analyzed: refData.length,
+      message: `已加载预计算数据：${refData.length} 张截图（来自 reference-data.json）`,
+    });
+  } else if (!images || images.length === 0) {
     setDatasetStatus({
       phase: "fallback",
       total: 0,
@@ -308,74 +322,72 @@ async function initBrandDataset() {
       message: "未检测到 `photos/manifest.json` 中的图片列表，已使用内置示例数据集（用于演示）。",
     });
     for (const ref of REFERENCE_POINTS) out.push({ ...ref });
-  }
+  } else {
+    // Analyze each screenshot to obtain axes; cache per-image.
+    if (totalToAnalyze > 0) {
+      setDatasetStatus({
+        phase: "loading",
+        total: totalToAnalyze,
+        brands: byBrand.size,
+        analyzed,
+        message: "已读取截图清单，正在批量分析并计算品牌平均点（首次加载会较慢）。",
+      });
+    }
 
-  // Analyze each screenshot to obtain axes; cache per-image.
-  const totalToAnalyze = images?.length || 0;
-  let analyzed = 0;
-  if (totalToAnalyze > 0) {
-    setDatasetStatus({
-      phase: "loading",
-      total: totalToAnalyze,
-      brands: byBrand.size,
-      analyzed,
-      message: "已读取截图清单，正在批量分析并计算品牌平均点（首次加载会较慢）。",
-    });
-  }
-
-  for (const [brand, list] of byBrand.entries()) {
-    for (const rel of list) {
-      const id = `photo:${rel}`;
-      const cached = cache[id];
-      const isFresh = cached && typeof cached === "object" && now - (cached.computedAt || 0) < maxAgeMs;
-      if (isFresh && typeof cached.x === "number" && typeof cached.y === "number") {
-        out.push({
-          id,
-          brand,
-          label: rel.split("/").pop() || rel,
-          x: cached.x,
-          y: cached.y,
-          imageUrl: `./${rel}`,
-          thumbUrl: `./${rel}`,
-          sourceUrl: "",
-          license: "",
-        });
-        analyzed++;
-        if (totalToAnalyze > 0 && analyzed % 4 === 0) {
-          setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+    for (const [brand, list] of byBrand.entries()) {
+      for (const rel of list) {
+        const id = `photo:${rel}`;
+        const cached = cache[id];
+        const isFresh = cached && typeof cached === "object" && now - (cached.computedAt || 0) < maxAgeMs;
+        if (isFresh && typeof cached.x === "number" && typeof cached.y === "number") {
+          out.push({
+            id,
+            brand,
+            label: rel.split("/").pop() || rel,
+            x: cached.x,
+            y: cached.y,
+            imageUrl: `./${rel}`,
+            thumbUrl: `./${rel}`,
+            sourceUrl: "",
+            license: "",
+          });
+          analyzed++;
+          if (totalToAnalyze > 0 && analyzed % 4 === 0) {
+            setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+          }
+          continue;
         }
-        continue;
-      }
-      try {
-        const f = await fetchAsFile(`./${rel}`, `${brand}_${(rel.split("/").pop() || "img").replaceAll(" ", "_")}`);
-        const payload = await analyzeFiles([f], { seed: 42 });
-        const result = {
-          principle: payload.principle,
-          overall_score: payload.overall_score,
-          dimension_scores: payload.dimension_scores,
-          issues: payload.issues,
-          meta: payload.meta,
-        };
-        const axes = computeScatterAxes(result);
-        cache[id] = { x: axes.x, y: axes.y, computedAt: Date.now() };
-        out.push({
-          id,
-          brand,
-          label: rel.split("/").pop() || rel,
-          x: axes.x,
-          y: axes.y,
-          imageUrl: `./${rel}`,
-          thumbUrl: `./${rel}`,
-          sourceUrl: "",
-          license: "",
-        });
-        analyzed++;
-        if (totalToAnalyze > 0 && analyzed % 2 === 0) {
-          setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+        try {
+          const f = await fetchAsFile(`./${rel}`, `${brand}_${(rel.split("/").pop() || "img").replaceAll(" ", "_")}`);
+          const payload = await analyzeFiles([f], { seed: 42 });
+          const result = {
+            principle: payload.principle,
+            overall_score: payload.overall_score,
+            dimension_scores: payload.dimension_scores,
+            issues: payload.issues,
+            meta: payload.meta,
+          };
+          const axes = computeScatterAxes(result);
+          cache[id] = { x: axes.x, y: axes.y, computedAt: Date.now() };
+          out.push({
+            id,
+            brand,
+            label: rel.split("/").pop() || rel,
+            x: axes.x,
+            y: axes.y,
+            imageUrl: `./${rel}`,
+            thumbUrl: `./${rel}`,
+            sourceUrl: "",
+            license: "",
+          });
+          analyzed++;
+          if (totalToAnalyze > 0 && analyzed % 2 === 0) {
+            setDatasetStatus({ phase: "analyzing", total: totalToAnalyze, brands: byBrand.size, analyzed });
+          }
+        } catch (e) {
+          console.warn("photo analyze failed", rel, e);
+          analyzed++;
         }
-      } catch (e) {
-        console.warn("photo analyze failed", rel, e);
-        analyzed++;
       }
     }
   }
@@ -386,25 +398,15 @@ async function initBrandDataset() {
   __brandPointById.clear();
   for (const bp of brandPoints) __brandPointById.set(bp.id, bp);
   scatterChart.setBrandPoints(brandPoints);
-  renderBrandExamples(""); // default view
+  renderBrandExamples("");
 
-  if (totalToAnalyze > 0) {
-    setDatasetStatus({
-      phase: "ready",
-      total: totalToAnalyze,
-      brands: brandPoints.length,
-      analyzed: totalToAnalyze,
-      message: `已完成：${brandPoints.length} 个品牌，${totalToAnalyze} 张截图。点击图上的品牌点查看示例。`,
-    });
-  } else {
-    setDatasetStatus({
-      phase: "ready",
-      total: out.length,
-      brands: brandPoints.length,
-      analyzed: out.length,
-      message: `已完成：${brandPoints.length} 个品牌（内置示例）。点击图上的品牌点查看示例。`,
-    });
-  }
+  setDatasetStatus({
+    phase: "ready",
+    total: out.length,
+    brands: brandPoints.length,
+    analyzed: out.length,
+    message: `已完成：${brandPoints.length} 个品牌，${out.length} 张截图。点击图上的品牌点查看示例。`,
+  });
 }
 
 initBrandDataset().catch((e) => console.warn(e));
@@ -669,7 +671,7 @@ async function runAiExplain() {
     alert("请先完成一次评估（上传并点击“开始评估”），再运行 AI 增强分析。");
     return;
   }
-  const apiBase = (window.__API_BASE__ || "").replace(/\\/+$/, "");
+  const apiBase = (window.__API_BASE__ || "").replace(/\/+$/, "");
   if (!apiBase) {
     alert("当前为纯静态模式，未配置后端 API，因此无法调用 AI。请在本地启动 backend 并设置 PUBLIC_API_BASE 指向它。");
     return;

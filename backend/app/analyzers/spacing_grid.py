@@ -1,3 +1,19 @@
+﻿"""
+SpacingAndGrid Analyzer
+
+Theory:
+  - Apple HIG: 4pt/8pt grid system for consistent spacing
+  - Nielsen (1994): consistency heuristic
+
+Algorithm:
+  1. Canny + morphological closing -> extract UI block bounding boxes
+  2. Compute horizontal/vertical gaps between neighboring blocks
+  3. KDE to find dominant gap modes
+  4. Check alignment to 4pt multiples (4,8,12,16,20,24,32,40,48)
+  5. Measure left/right margin consistency
+  6. spacing_score = alignment_quality * margin_consistency
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -8,9 +24,34 @@ import numpy as np
 from app.analyzers.base import Analyzer, AnalyzerContext
 from app.models import BBox, Issue
 
+# Valid 4pt grid values up to 64px
+_GRID_4PT = np.array([4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64], dtype=np.float64)
 
-def _nearest_multiple(value: float, base: int) -> int:
-    return int(round(value / base) * base)
+
+def _nearest_4pt(value: float) -> float:
+    idx = int(np.argmin(np.abs(_GRID_4PT - value)))
+    return float(_GRID_4PT[idx])
+
+
+def _kde_modes(values: np.ndarray, bw: float = 3.0) -> list[float]:
+    """Simple 1D KDE on integer domain to find gap modes."""
+    if len(values) == 0:
+        return []
+    lo, hi = int(np.min(values)), int(np.max(values))
+    if hi - lo < 2:
+        return [float(np.mean(values))]
+    x = np.arange(lo, hi + 1, dtype=np.float64)
+    density = np.zeros_like(x)
+    for v in values:
+        density += np.exp(-0.5 * ((x - v) / bw) ** 2)
+    # find local maxima
+    modes = []
+    for i in range(1, len(density) - 1):
+        if density[i] > density[i - 1] and density[i] >= density[i + 1]:
+            modes.append(float(x[i]))
+    if not modes and len(density) > 0:
+        modes.append(float(x[int(np.argmax(density))]))
+    return modes
 
 
 class SpacingGridConsistencyAnalyzer(Analyzer):
@@ -18,139 +59,172 @@ class SpacingGridConsistencyAnalyzer(Analyzer):
 
     def __init__(
         self,
-        grid_base_px: int = 8,
-        max_elements: int = 250,
-        min_area_px: int = 900,
-        max_area_ratio: float = 0.35,
-        outlier_threshold_px: int = 3,
+        max_elements: int = 300,
+        min_area_px: int = 600,
+        max_area_ratio: float = 0.40,
     ) -> None:
-        self.grid_base_px = grid_base_px
         self.max_elements = max_elements
         self.min_area_px = min_area_px
         self.max_area_ratio = max_area_ratio
-        self.outlier_threshold_px = outlier_threshold_px
 
-    def analyze(self, ctx: AnalyzerContext) -> list[Issue]:
+    def analyze(self, ctx: AnalyzerContext) -> tuple[list[Issue], dict]:
         rgb = ctx.image_rgb
         h, w = rgb.shape[:2]
 
         bgr = rgb[:, :, ::-1]
         gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
 
-        # Edge-ish map to find UI blocks; this is heuristic but deterministic.
+        # Edge detection + morphological closing to connect nearby edges
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 60, 180)
-        kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.dilate(edges, kernel, iterations=1)
+        edges = cv2.Canny(blur, 50, 150)
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+        kernel_dilate = np.ones((3, 3), np.uint8)
+        closed = cv2.dilate(closed, kernel_dilate, iterations=1)
 
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        rects: list[tuple[int, int, int, int, int]] = []
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         max_area = int(h * w * self.max_area_ratio)
+        rects: list[tuple[int, int, int, int]] = []
         for c in contours:
             x, y, rw, rh = cv2.boundingRect(c)
             area = rw * rh
-            if area < self.min_area_px:
+            if area < self.min_area_px or area > max_area:
                 continue
-            if area > max_area:
-                continue
-            rects.append((x, y, rw, rh, area))
+            rects.append((x, y, rw, rh))
 
-        rects.sort(key=lambda r: r[4], reverse=True)
+        rects.sort(key=lambda r: r[2] * r[3], reverse=True)
         rects = rects[: self.max_elements]
 
-        if len(rects) < 8:
-            return []
+        if len(rects) < 6:
+            features = {"spacing_score": 80.0, "gap_count": 0, "grid_alignment_ratio": 1.0,
+                        "margin_std": 0.0, "outlier_ratio_01": 0.0}
+            return [], features
 
-        # Compute simple gap samples (horizontal & vertical) between neighboring rects.
-        rects_xy = [(x, y, rw, rh) for x, y, rw, rh, _ in rects]
+        # --- Compute gaps ---
+        h_gaps: list[float] = []
+        v_gaps: list[float] = []
 
-        gaps: list[dict] = []
-        # Horizontal neighbors: group by rough y band.
-        rects_by_y = sorted(rects_xy, key=lambda r: (r[1] // 24, r[0]))
-        for band in range(0, (h // 24) + 1):
-            row = [r for r in rects_by_y if (r[1] // 24) == band]
+        # Horizontal: group by Y band
+        band_h = max(1, h // 30)
+        rects_sorted_y = sorted(rects, key=lambda r: (r[1] // band_h, r[0]))
+        for band_idx in range(0, (h // band_h) + 1):
+            row = [r for r in rects_sorted_y if (r[1] // band_h) == band_idx]
             row.sort(key=lambda r: r[0])
             for a, b in zip(row, row[1:]):
-                ax, ay, aw, ah = a
-                bx, by, bw, bh = b
-                gap = bx - (ax + aw)
-                if gap <= 0 or gap > 240:
-                    continue
-                gaps.append({"dir": "x", "gap": int(gap), "a": a, "b": b})
+                gap = b[0] - (a[0] + a[2])
+                if 2 <= gap <= 200:
+                    h_gaps.append(float(gap))
 
-        # Vertical neighbors: group by rough x band.
-        rects_by_x = sorted(rects_xy, key=lambda r: (r[0] // 24, r[1]))
-        for band in range(0, (w // 24) + 1):
-            col = [r for r in rects_by_x if (r[0] // 24) == band]
+        # Vertical: group by X band
+        band_w = max(1, w // 20)
+        rects_sorted_x = sorted(rects, key=lambda r: (r[0] // band_w, r[1]))
+        for band_idx in range(0, (w // band_w) + 1):
+            col = [r for r in rects_sorted_x if (r[0] // band_w) == band_idx]
             col.sort(key=lambda r: r[1])
             for a, b in zip(col, col[1:]):
-                ax, ay, aw, ah = a
-                bx, by, bw, bh = b
-                gap = by - (ay + ah)
-                if gap <= 0 or gap > 240:
-                    continue
-                gaps.append({"dir": "y", "gap": int(gap), "a": a, "b": b})
+                gap = b[1] - (a[1] + a[3])
+                if 2 <= gap <= 200:
+                    v_gaps.append(float(gap))
 
-        if len(gaps) < 10:
-            return []
+        all_gaps = np.array(h_gaps + v_gaps, dtype=np.float64)
+        if len(all_gaps) < 5:
+            features = {"spacing_score": 75.0, "gap_count": len(all_gaps),
+                        "grid_alignment_ratio": 1.0, "margin_std": 0.0, "outlier_ratio_01": 0.0}
+            return [], features
 
-        # Score outliers: distance to nearest multiple of grid_base_px
-        outliers: list[dict] = []
-        for g in gaps:
-            gap = g["gap"]
-            nearest = _nearest_multiple(gap, self.grid_base_px)
-            diff = abs(gap - nearest)
-            if diff >= self.outlier_threshold_px:
-                outliers.append({**g, "nearest": int(nearest), "diff": int(diff)})
+        # --- Grid alignment score ---
+        deviations = np.array([abs(g - _nearest_4pt(g)) for g in all_gaps])
+        aligned_mask = deviations <= 2.0  # within 2px of a 4pt value
+        grid_alignment_ratio = float(np.mean(aligned_mask))
+        mean_deviation = float(np.mean(deviations))
 
-        if not outliers:
-            return []
+        # --- Margin consistency ---
+        left_margins = [r[0] for r in rects if r[0] < w * 0.3]
+        right_margins = [w - (r[0] + r[2]) for r in rects if (r[0] + r[2]) > w * 0.7]
+        margin_std = 0.0
+        if len(left_margins) >= 3:
+            margin_std += float(np.std(left_margins))
+        if len(right_margins) >= 3:
+            margin_std += float(np.std(right_margins))
+        margin_std /= 2.0
 
-        # Keep top-N worst diffs
-        outliers.sort(key=lambda o: o["diff"], reverse=True)
-        top = outliers[:12]
+        # --- KDE modes ---
+        gap_modes = _kde_modes(all_gaps, bw=3.0)
+        modes_on_grid = sum(1 for m in gap_modes if abs(m - _nearest_4pt(m)) <= 2.0)
+        mode_grid_ratio = modes_on_grid / max(1, len(gap_modes))
 
-        issue_id = hashlib.sha1(f"{ctx.filename}:{self.dimension}:gridOutliers".encode("utf-8")).hexdigest()[:10]
+        # --- Outlier detection ---
+        outlier_threshold = 3.0  # px from nearest 4pt
+        outlier_count = int(np.sum(deviations >= outlier_threshold))
+        outlier_ratio = outlier_count / max(1, len(all_gaps))
 
-        bboxes: list[BBox] = []
-        for o in top:
-            ax, ay, aw, ah = o["a"]
-            bx, by, bw, bh = o["b"]
-            # Union bbox for the pair
-            x1 = min(ax, bx)
-            y1 = min(ay, by)
-            x2 = max(ax + aw, bx + bw)
-            y2 = max(ay + ah, by + bh)
-            bboxes.append(BBox(x=int(x1), y=int(y1), w=int(x2 - x1), h=int(y2 - y1)))
+        # --- Final score ---
+        # Weighted combination: alignment (0.5) + margin consistency (0.25) + mode grid (0.25)
+        alignment_component = grid_alignment_ratio  # 0-1
+        margin_component = max(0.0, 1.0 - margin_std / 30.0)  # margin_std > 30 = bad
+        mode_component = mode_grid_ratio  # 0-1
 
-        evidence = {
-            "grid_base_px": self.grid_base_px,
-            "outlier_samples": [
-                {
-                    "dir": o["dir"],
-                    "gap_px": o["gap"],
-                    "nearest_grid_px": o["nearest"],
-                    "diff_px": o["diff"],
-                }
-                for o in top
-            ],
-            "note": "该检测是图像启发式推断（不依赖 UI 结构文件），用于发现明显的间距离群点。",
+        spacing_score = (0.50 * alignment_component + 0.25 * margin_component + 0.25 * mode_component) * 100.0
+        spacing_score = round(max(0.0, min(100.0, spacing_score)), 1)
+
+        features = {
+            "spacing_score": spacing_score,
+            "gap_count": len(all_gaps),
+            "grid_alignment_ratio": round(grid_alignment_ratio, 3),
+            "mean_deviation_px": round(mean_deviation, 2),
+            "margin_std_px": round(margin_std, 2),
+            "gap_modes": [round(m, 1) for m in gap_modes[:8]],
+            "mode_grid_ratio": round(mode_grid_ratio, 3),
+            "outlier_ratio_01": round(outlier_ratio, 3),
+            "outlier_count": outlier_count,
+            "total_gaps": len(all_gaps),
         }
 
-        suggestion = (
-            f"将离群间距对齐到 {self.grid_base_px}px 网格（例如把 {top[0]['gap']}px 调整为 {top[0]['nearest']}px），"
-            "并尽量让同类模块的水平/垂直间距复用同一组 spacing token（8/16/24/32 等）。"
-        )
+        # --- Issues ---
+        issues: list[Issue] = []
 
-        return [
-            Issue(
-                id=f"{self.dimension}-{issue_id}",
-                dimension=self.dimension,
-                severity="high" if len(outliers) >= 20 else "medium",
-                title="检测到间距/网格一致性离群点（偏离 8pt 网格）",
-                evidence=evidence,
-                suggestion=suggestion,
-                bboxes=bboxes,
+        if outlier_ratio > 0.15:
+            # Collect worst outlier bboxes
+            gap_data = []
+            for g_val, dev in zip(all_gaps, deviations):
+                if dev >= outlier_threshold:
+                    gap_data.append({"gap_px": round(float(g_val), 1),
+                                     "nearest_4pt": round(_nearest_4pt(float(g_val)), 0),
+                                     "diff_px": round(float(dev), 1)})
+            gap_data.sort(key=lambda d: d["diff_px"], reverse=True)
+
+            issue_id = hashlib.sha1(f"{ctx.filename}:{self.dimension}:gridOutliers".encode()).hexdigest()[:10]
+            sev = "high" if outlier_ratio > 0.35 else "medium"
+            issues.append(
+                Issue(
+                    id=f"{self.dimension}-{issue_id}",
+                    dimension=self.dimension,
+                    severity=sev,
+                    title=f"Grid outliers: {outlier_count}/{len(all_gaps)} gaps deviate from 4pt grid",
+                    evidence={
+                        "outlier_ratio": round(outlier_ratio, 3),
+                        "worst_gaps": gap_data[:10],
+                        "gap_modes": features["gap_modes"],
+                    },
+                    suggestion=f"Align spacing to 4pt grid multiples (4/8/12/16/24/32px). Mean deviation: {mean_deviation:.1f}px.",
+                    bboxes=[],
+                )
             )
-        ]
 
+        if margin_std > 15.0:
+            issue_id = hashlib.sha1(f"{ctx.filename}:{self.dimension}:marginInconsistent".encode()).hexdigest()[:10]
+            issues.append(
+                Issue(
+                    id=f"{self.dimension}-{issue_id}",
+                    dimension=self.dimension,
+                    severity="medium" if margin_std > 25 else "low",
+                    title=f"Inconsistent page margins (std={margin_std:.1f}px)",
+                    evidence={"margin_std_px": round(margin_std, 2),
+                              "left_margin_count": len(left_margins),
+                              "right_margin_count": len(right_margins)},
+                    suggestion="Unify left/right page margins to a single consistent value.",
+                    bboxes=[],
+                )
+            )
+
+        return issues, features

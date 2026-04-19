@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @param {HTMLElement} container
  * @param {{
  *   brandPoints?: Array<{ id: string, x: number, y: number, label: string, brand?: string, thumbUrl?: string }>,
@@ -15,7 +15,7 @@ export function createScatterChart(container, options = {}) {
   svg.setAttribute("class", "scatterSvg");
   svg.setAttribute("viewBox", "0 0 440 400");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "一致性双轴散点图");
+  svg.setAttribute("aria-label", "Apple Consistency 双轴散点图");
 
   inner.appendChild(svg);
   container.appendChild(inner);
@@ -41,17 +41,80 @@ export function createScatterChart(container, options = {}) {
     return padT + (1 - y / 100) * innerH;
   }
 
+  // --- Confidence ellipse helpers ---
+  function computeBrandEllipses(points) {
+    const byBrand = new Map();
+    for (const p of points) {
+      const brand = p.brand || "Unknown";
+      if (!byBrand.has(brand)) byBrand.set(brand, []);
+      byBrand.get(brand).push(p);
+    }
+    const ellipses = [];
+    for (const [brand, list] of byBrand.entries()) {
+      if (list.length < 3) continue;
+      const xs = list.map((p) => p.x);
+      const ys = list.map((p) => p.y);
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+      const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+      const sx = Math.sqrt(xs.reduce((s, v) => s + (v - mx) ** 2, 0) / xs.length) || 1;
+      const sy = Math.sqrt(ys.reduce((s, v) => s + (v - my) ** 2, 0) / ys.length) || 1;
+      // Covariance for rotation
+      const cov = xs.reduce((s, v, i) => s + (v - mx) * (ys[i] - my), 0) / xs.length;
+      const angle = 0.5 * Math.atan2(2 * cov, sx * sx - sy * sy);
+      // 95% confidence: chi2(2, 0.95) ~ 5.991 => sqrt(5.991) ~ 2.448
+      const scale = 2.448;
+      ellipses.push({
+        brand,
+        cx: dataX(mx),
+        cy: dataY(my),
+        rx: (sx * scale / 100) * innerW,
+        ry: (sy * scale / 100) * innerH,
+        angleDeg: -(angle * 180) / Math.PI,
+        color: brandColor(brand),
+      });
+    }
+    return ellipses;
+  }
+
+  function brandColor(brand) {
+    const colors = {
+      Apple: "rgba(10,132,255,0.18)",
+      Google: "rgba(52,199,89,0.18)",
+      Huawei: "rgba(255,69,58,0.18)",
+      Honor: "rgba(255,159,10,0.18)",
+      OPPO: "rgba(100,210,80,0.18)",
+      Samsung: "rgba(48,176,199,0.18)",
+      Vivo: "rgba(175,130,255,0.18)",
+      Xiaomi: "rgba(255,100,50,0.18)",
+    };
+    return colors[brand] || "rgba(160,160,180,0.12)";
+  }
+
+  function brandStroke(brand) {
+    const colors = {
+      Apple: "rgba(10,132,255,0.45)",
+      Google: "rgba(52,199,89,0.45)",
+      Huawei: "rgba(255,69,58,0.45)",
+      Honor: "rgba(255,159,10,0.45)",
+      OPPO: "rgba(100,210,80,0.45)",
+      Samsung: "rgba(48,176,199,0.45)",
+      Vivo: "rgba(175,130,255,0.45)",
+      Xiaomi: "rgba(255,100,50,0.45)",
+    };
+    return colors[brand] || "rgba(160,160,180,0.3)";
+  }
+
   let clickBound = false;
 
   function render() {
     svg.innerHTML = "";
 
     const defs = document.createElementNS(svg.namespaceURI, "defs");
-    defs.innerHTML = `
-      <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
-        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-      </pattern>
-    `;
+    defs.innerHTML = [
+      '<pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">',
+      '  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1"/>',
+      "</pattern>",
+    ].join("");
     svg.appendChild(defs);
 
     const bg = document.createElementNS(svg.namespaceURI, "rect");
@@ -76,25 +139,25 @@ export function createScatterChart(container, options = {}) {
     // Axes labels
     const xl = document.createElementNS(svg.namespaceURI, "text");
     xl.setAttribute("x", String(padL + innerW / 2));
-    xl.setAttribute("y", String(H - 12));
+    xl.setAttribute("y", String(H - 6));
     xl.setAttribute("text-anchor", "middle");
     xl.setAttribute("fill", "#a3a3b2");
-    xl.setAttribute("font-size", "12");
-    xl.textContent = "形状/圆角风格 →";
+    xl.setAttribute("font-size", "11");
+    xl.textContent = "Clarity（视觉清晰度）→";
     svg.appendChild(xl);
 
     const yl = document.createElementNS(svg.namespaceURI, "text");
-    yl.setAttribute("x", "16");
+    yl.setAttribute("x", "14");
     yl.setAttribute("y", String(padT + innerH / 2));
     yl.setAttribute("text-anchor", "middle");
     yl.setAttribute("fill", "#a3a3b2");
-    yl.setAttribute("font-size", "12");
-    yl.setAttribute("transform", `rotate(-90 16 ${padT + innerH / 2})`);
-    yl.textContent = "色彩复杂度 →";
+    yl.setAttribute("font-size", "11");
+    yl.setAttribute("transform", `rotate(-90 14 ${padT + innerH / 2})`);
+    yl.textContent = "Consistency（设计一致性）→";
     svg.appendChild(yl);
 
-    // Ticks 0,50,100
-    for (const t of [0, 50, 100]) {
+    // Ticks 0,25,50,75,100
+    for (const t of [0, 25, 50, 75, 100]) {
       const tx = document.createElementNS(svg.namespaceURI, "text");
       tx.setAttribute("x", String(dataX(t)));
       tx.setAttribute("y", String(H - 28));
@@ -103,8 +166,19 @@ export function createScatterChart(container, options = {}) {
       tx.setAttribute("font-size", "10");
       tx.textContent = String(t);
       svg.appendChild(tx);
+
+      // Grid line
+      if (t > 0 && t < 100) {
+        const gl = document.createElementNS(svg.namespaceURI, "line");
+        gl.setAttribute("x1", String(dataX(t)));
+        gl.setAttribute("y1", String(padT));
+        gl.setAttribute("x2", String(dataX(t)));
+        gl.setAttribute("y2", String(padT + innerH));
+        gl.setAttribute("stroke", "rgba(255,255,255,.04)");
+        svg.appendChild(gl);
+      }
     }
-    for (const t of [0, 50, 100]) {
+    for (const t of [0, 25, 50, 75, 100]) {
       const ty = document.createElementNS(svg.namespaceURI, "text");
       ty.setAttribute("x", String(padL - 8));
       ty.setAttribute("y", String(dataY(t) + 4));
@@ -113,12 +187,49 @@ export function createScatterChart(container, options = {}) {
       ty.setAttribute("font-size", "10");
       ty.textContent = String(t);
       svg.appendChild(ty);
+
+      if (t > 0 && t < 100) {
+        const gl = document.createElementNS(svg.namespaceURI, "line");
+        gl.setAttribute("x1", String(padL));
+        gl.setAttribute("y1", String(dataY(t)));
+        gl.setAttribute("x2", String(padL + innerW));
+        gl.setAttribute("y2", String(dataY(t)));
+        gl.setAttribute("stroke", "rgba(255,255,255,.04)");
+        svg.appendChild(gl);
+      }
     }
 
-    // Brand points (below user points) with collision-avoid layout
+    // Confidence ellipses (draw before points)
+    const ellipses = computeBrandEllipses(brandPoints || []);
+    for (const e of ellipses) {
+      const el = document.createElementNS(svg.namespaceURI, "ellipse");
+      el.setAttribute("cx", String(e.cx));
+      el.setAttribute("cy", String(e.cy));
+      el.setAttribute("rx", String(Math.max(12, Math.min(innerW * 0.45, e.rx))));
+      el.setAttribute("ry", String(Math.max(12, Math.min(innerH * 0.45, e.ry))));
+      el.setAttribute("fill", e.color);
+      el.setAttribute("stroke", brandStroke(e.brand));
+      el.setAttribute("stroke-width", "1.2");
+      el.setAttribute("stroke-dasharray", "4 3");
+      el.setAttribute("transform", `rotate(${e.angleDeg} ${e.cx} ${e.cy})`);
+      el.setAttribute("opacity", "0.7");
+      svg.appendChild(el);
+
+      // Label on ellipse
+      const lbl = document.createElementNS(svg.namespaceURI, "text");
+      lbl.setAttribute("x", String(e.cx));
+      lbl.setAttribute("y", String(e.cy - Math.max(12, e.ry) - 4));
+      lbl.setAttribute("text-anchor", "middle");
+      lbl.setAttribute("fill", brandStroke(e.brand).replace("0.45", "0.8"));
+      lbl.setAttribute("font-size", "9");
+      lbl.setAttribute("font-weight", "600");
+      lbl.textContent = e.brand;
+      svg.appendChild(lbl);
+    }
+
+    // Brand points with collision-avoid
     const bps = (brandPoints || []).map((p) => ({ ...p }));
     const placed = bps.map((p) => ({ p, cx: dataX(p.x), cy: dataY(p.y) }));
-    // Simple repulsion in screen space to reduce overlap
     const minD = 30;
     for (let it = 0; it < 90; it++) {
       let moved = 0;
@@ -140,7 +251,6 @@ export function createScatterChart(container, options = {}) {
           moved++;
         }
       }
-      // clamp within plot rect
       for (const o of placed) {
         o.cx = Math.max(padL + 10, Math.min(padL + innerW - 10, o.cx));
         o.cy = Math.max(padT + 10, Math.min(padT + innerH - 10, o.cy));
@@ -177,7 +287,7 @@ export function createScatterChart(container, options = {}) {
       const ring = document.createElementNS(svg.namespaceURI, "circle");
       ring.setAttribute("cx", String(cx));
       ring.setAttribute("cy", String(cy));
-      ring.setAttribute("r", thumb ? "14" : (isSel ? "10" : "8"));
+      ring.setAttribute("r", thumb ? "14" : isSel ? "10" : "8");
       ring.setAttribute("fill", thumb ? "none" : "rgba(10,132,255,0.35)");
       ring.setAttribute("stroke", isSel ? "#ffd60a" : "#0a84ff");
       ring.setAttribute("stroke-width", isSel ? "3.2" : "2.0");
@@ -302,7 +412,6 @@ export function createScatterChart(container, options = {}) {
     setUserPoints,
     setBrandPoints,
     getSelection,
-    /** @param {'user'|'brand'|'none'} kind */
     clearSelection(kind = "none") {
       selectedId = null;
       selectedKind = kind === "none" ? "none" : selectedKind;

@@ -1,17 +1,16 @@
-/**
- * 参考界面点（不可删除）
+﻿/**
+ * 参考界面点
  *
- * 说明：
- * - 这里的 (x,y) 是 “兜底坐标”，页面启动后会尝试对 `imageUrl` 做同样的评估并得到“有依据的坐标”
- * - `thumbUrl` 用于散点图里显示缩略图（和用户上传点一致的样式）
- * - 素材均来自可再分发的自由许可页面；具体署名与许可见 README/ASSETS_ATTRIBUTION.md
+ * 优先从 batch_analyze.py 生成的 reference-data.json 加载（含实际算法计算的坐标），
+ * 若加载失败则回退到内置静态数据。
  */
+
+// 内置静态参考点（仅含 Wikipedia/Wikimedia 素材的点，作为最小兜底）
 export const REFERENCE_POINTS = [
   {
     id: "ref-apple-ios-18-4-1",
     brand: "Apple",
     label: "iOS 18.4.1（截图）",
-    // fallback（启动后会用同算法重新计算）
     x: 88,
     y: 86,
     imageUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
@@ -28,24 +27,23 @@ export const REFERENCE_POINTS = [
     imageUrl: "./assets/reference/apple/ios_17_lockscreen.png",
     thumbUrl: "./assets/reference/apple/ios_17_lockscreen.png",
     sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17_Lockscreen.png",
-    license: "Public domain (Commons TO0 claim)",
+    license: "Public domain",
   },
   {
     id: "ref-apple-ios-17-2-kbd-n",
     brand: "Apple",
-    label: "iOS 17.2（键盘：Northern Sámi）",
+    label: "iOS 17.2（键盘：Northern Sami）",
     x: 82,
     y: 74,
     imageUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
     thumbUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
-    sourceUrl:
-      "https://commons.wikimedia.org/wiki/File:IOS_17.2_screenshot_showing_the_Northern_S%C3%A1mi_virtual_keyboard.png",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17.2_screenshot_showing_the_Northern_S%C3%A1mi_virtual_keyboard.png",
     license: "CC0 1.0",
   },
   {
     id: "ref-apple-ios-17-2-kbd-p",
     brand: "Apple",
-    label: "iOS 17.2（键盘：Pite Sámi）",
+    label: "iOS 17.2（键盘：Pite Sami）",
     x: 82,
     y: 74,
     imageUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
@@ -53,149 +51,54 @@ export const REFERENCE_POINTS = [
     sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17.2_screenshot_showing_the_Pite_Sami_virtual_keyboard.png",
     license: "CC0 1.0",
   },
-  {
-    id: "ref-huawei-honor8x-home",
-    brand: "Huawei",
-    label: "Honor 8X（主屏）",
-    x: 62,
-    y: 58,
-    imageUrl: "./assets/reference/huawei/honor8x_home_screen.jpg",
-    thumbUrl: "./assets/reference/huawei/honor8x_home_screen.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Honor_8x_Home_Screen.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-huawei-magicui-4-2",
-    brand: "Huawei",
-    label: "Magic UI 4.2（Launcher3）",
-    x: 64,
-    y: 60,
-    imageUrl: "./assets/reference/huawei/magic_ui_4_2_launcher3.jpg",
-    thumbUrl: "./assets/reference/huawei/magic_ui_4_2_launcher3.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Android_11_Magic_UI_4.2.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-huawei-harmonyos2-mate40pro",
-    brand: "Huawei",
-    label: "HarmonyOS 2.0（Mate 40 Pro）",
-    x: 62,
-    y: 56,
-    imageUrl: "./assets/reference/huawei/mate40pro_harmonyos2.jpg",
-    thumbUrl: "./assets/reference/huawei/mate40pro_harmonyos2.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:HUAWEI_Mate_40_Pro_loaded_with_Harmony_OS_2.0.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-huawei-nova8pro-front",
-    brand: "Huawei",
-    label: "Nova 8 Pro（正面）",
-    x: 58,
-    y: 54,
-    imageUrl: "./assets/reference/huawei/nova8pro_front.jpg",
-    thumbUrl: "./assets/reference/huawei/nova8pro_front.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Huawei_Nova_8_Pro_front.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-xiaomi-miui14-about",
-    brand: "Xiaomi",
-    label: "MIUI 14（关于手机）",
-    x: 70,
-    y: 62,
-    imageUrl: "./assets/reference/xiaomi/miui_14_about_phone.png",
-    thumbUrl: "./assets/reference/xiaomi/miui_14_about_phone.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:MIUI_14_About_Phone.png",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-xiaomi-miui-v2-home",
-    brand: "Xiaomi",
-    label: "MIUI V2（主屏）",
-    x: 60,
-    y: 54,
-    imageUrl: "./assets/reference/xiaomi/miui_v2_home.jpg",
-    thumbUrl: "./assets/reference/xiaomi/miui_v2_home.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:MIUI_V2_2.3.6y_MI_ONE_PLUS.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-xiaomi-miui-v5-home",
-    brand: "Xiaomi",
-    label: "MIUI V5（主屏）",
-    x: 62,
-    y: 56,
-    imageUrl: "./assets/reference/xiaomi/miui_v5_home.jpg",
-    thumbUrl: "./assets/reference/xiaomi/miui_v5_home.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:MIUI_V5_4.12.5_MI_C1.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-google-pixel4a-lens",
-    brand: "Google",
-    label: "Pixel 4A（相机/扫码）",
-    x: 74,
-    y: 66,
-    imageUrl: "./assets/reference/google/pixel4a_google_lens_qr.png",
-    thumbUrl: "./assets/reference/google/pixel4a_google_lens_qr.png",
-    sourceUrl:
-      "https://commons.wikimedia.org/wiki/File:Google_Lens_QR_Code_scanner_in_Google_Camera_-_Google_Pixel_4A_(2022).png",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-google-aosp9-home",
-    brand: "Google",
-    label: "AOSP 9.0（主屏）",
-    x: 70,
-    y: 60,
-    imageUrl: "./assets/reference/google/aosp_9_home_foss.png",
-    thumbUrl: "./assets/reference/google/aosp_9_home_foss.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:AOSP_vanilla_9.0_with_FOSS_apps.png",
-    license: "Apache-2.0 (Android Open Source Project)",
-  },
-  {
-    id: "ref-google-android16-home",
-    brand: "Google",
-    label: "Android 16（模拟器主屏）",
-    x: 72,
-    y: 62,
-    imageUrl: "./assets/reference/google/android_16_home_emulator.png",
-    thumbUrl: "./assets/reference/google/android_16_home_emulator.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Android_16_home_screen_screenshot.png",
-    license: "Apache-2.0 (Android Open Source Project)",
-  },
-  {
-    id: "ref-oppo-a57-lineageos",
-    brand: "OPPO",
-    label: "A57（LineageOS）",
-    x: 60,
-    y: 56,
-    imageUrl: "./assets/reference/oppo/oppo_a57_lineageos.jpg",
-    thumbUrl: "./assets/reference/oppo/oppo_a57_lineageos.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:OPPO_A57_LineageOS.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-oppo-bdp93-boot",
-    brand: "OPPO",
-    label: "BDP-93（启动界面）",
-    x: 48,
-    y: 42,
-    imageUrl: "./assets/reference/oppo/oppo_bdp93_booting.jpg",
-    thumbUrl: "./assets/reference/oppo/oppo_bdp93_booting.jpg",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:OPPO_BDP-93_booting.jpg",
-    license: "CC BY-SA 4.0",
-  },
-  {
-    id: "ref-oppo-bdp93-display",
-    brand: "OPPO",
-    label: "BDP-93（显示屏）",
-    x: 52,
-    y: 45,
-    imageUrl: "./assets/reference/oppo/oppo_bdp93_display_logos.jpg",
-    thumbUrl: "./assets/reference/oppo/oppo_bdp93_display_logos.jpg",
-    sourceUrl:
-      "https://commons.wikimedia.org/wiki/File:SACD_%26_DVD_%26_Dolby_True_HD_%26_DTS-HD_Master_Audio_logos_on_OPPO_BluRay-Player.jpg",
-    license: "CC BY-SA 4.0",
-  },
 ];
+
+/**
+ * 从 reference-data.json 加载批量分析结果
+ * @returns {Promise<Array>} 参考点数组
+ */
+export async function loadReferenceData() {
+  try {
+    const res = await fetch("./reference-data.json", { cache: "no-cache" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    return data.map((d, i) => ({
+      id: `ref-${d.brand}-${i}`,
+      brand: brandDisplayName(d.brand),
+      label: d.filename,
+      x: d.clarity_score,
+      y: d.consistency_score,
+      imageUrl: "",
+      thumbUrl: "",
+      sourceUrl: "",
+      license: "",
+      features: {
+        color_score: d.color_score,
+        spacing_score: d.spacing_score,
+        corner_score: d.corner_score,
+        typo_score: d.typo_score,
+        clarity_score: d.clarity_score,
+        consistency_score: d.consistency_score,
+      },
+    }));
+  } catch (e) {
+    console.warn("Failed to load reference-data.json:", e);
+    return null;
+  }
+}
+
+function brandDisplayName(brand) {
+  const map = {
+    apple: "Apple",
+    google: "Google",
+    huawei: "Huawei",
+    honor: "Honor",
+    oppo: "OPPO",
+    samsung: "Samsung",
+    vivo: "Vivo",
+    xiaomi: "Xiaomi",
+  };
+  return map[brand?.toLowerCase()] || brand || "Unknown";
+}
