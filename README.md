@@ -1,108 +1,176 @@
-# 一致性原则评估工具（个人作业）
+﻿# Apple Consistency 评估工具 — 设计规则作业说明
 
-本项目实现一个基于 **Apple 一致性（Consistency）原则** 的移动端界面截图评估工具：上传截图后输出 **分数 + 问题清单 + 可视化标注报告**，并支持导出（HTML）。
+> **在线预览**：[https://dingzhen-zhr.github.io/apple-consistency-evaluator/](https://dingzhen-zhr.github.io/apple-consistency-evaluator/)
 
-## 作业选题说明（Apple Consistency）
+---
 
-一致性原则关注：同类元素在不同页面/不同模块中是否保持 **同一套设计 token 与组件样式**（颜色、字号层级、间距网格、圆角/阴影等）。  
-本项目尽量避免“只把图片发给 LLM”的黑箱方式，而是用 **可计算的度量** 给出证据（离群点/分布/漂移），再生成可解释建议。
+## 一、设计规则选择与研究对象
 
-## 运行方式
+### 1.1 规则选择：一致性（Consistency）
 
-### 后端（FastAPI）
+本作业选择 **《通用设计法则》中的"一致性（Consistency）"** 原则作为评估对象。Apple HIG（Human Interface Guidelines）将一致性分为：
 
-在 `backend/` 下安装依赖并启动：
+- **视觉一致性**：相同类型的元素应使用一致的颜色令牌、圆角、间距与字型比例；
+- **功能一致性**：相似的行为应映射到相同的视觉表示，降低用户的学习成本；
+- **外部一致性**：界面风格应与平台规范对齐，使用户能迁移已有的平台经验。
+
+在 Apple 生态中，一致性失败的直接表现包括：色板中存在近似但非完全相同的颜色（色彩漂移）、按钮/卡片圆角半径不统一、间距未对齐到 4pt 网格、字号层级过多或比例混乱。
+
+### 1.2 研究对象：移动端 UI 截图
+
+选择 **iOS/Android 移动端 UI 截图** 作为研究对象，原因如下：
+
+1. 移动端截图的视觉元素密度适中，适合用计算机视觉方法自动提取结构特征；
+2. Apple HIG 明确给出了间距（4pt 网格）、圆角（8/12/16px 标准集合）和字型（SF 字型系统）的量化规范，可作为评分基准；
+3. 不同品牌在一致性上存在显著差异，有助于验证评估系统的区分度。
+
+---
+
+## 二、可计算维度拆解
+
+本系统将"一致性"操作化为 **双轴坐标系**：
+
+| 轴 | 含义 | 评分范围 |
+|---|---|---|
+| **X 轴：Clarity 视觉清晰度** | 界面视觉元素的复杂度（越右越简洁） | 0–100 |
+| **Y 轴：Consistency 设计一致性** | 颜色/间距/圆角/字型的规范一致程度（越上越统一） | 0–100 |
+
+### 2.1 Clarity（X 轴）— 视觉复杂度分析
+
+基于 **Sha et al. (2025)** 的视觉复杂度公式：
+
+- X1 = 图标计数（Canny 边缘 + 轮廓过滤）
+- X2 = 文本块计数（形态学 Blackhat+Tophat + 连通域分析）
+- X3 = 图片区域计数（大轮廓检测）
+- X4 = RGB 多通道香农熵
+
+clarity_score = (1 - 归一化后的复杂度值) × 100。
+
+### 2.2 Consistency（Y 轴）— 四维一致性加权
+
+Consistency = 0.30 × 色彩 + 0.30 × 间距 + 0.20 × 圆角 + 0.20 × 字型
+
+各子维度定义：
+
+**色彩一致性（ColorConsistency）**：K-means（k=8）Lab 色彩空间聚类，计算 palette_compactness、semantic_gap、near_color_pairs（ΔE≤10 的近似色对数量）。
+
+**间距与网格一致性（SpacingAndGridConsistency）**：提取 UI 块间距，与 4pt 网格（4/8/12/16/24/32px）对齐，计算 grid_alignment_ratio、mean_deviation_px、margin_std_px。
+
+**组件样式一致性（ComponentStyleConsistency）**：最小二乘圆弧拟合估计圆角半径，计算 radius_cv（变异系数）和 apple_modal_match。
+
+**字体排版一致性（TypographyConsistency）**：KDE 峰值检测字号层数，计算 tier_count、scale_harmony、apple_match_ratio。
+
+---
+
+## 三、系统工程架构
+
+```
+personal_work/
+├── frontend/                   # 纯 HTML+JS 前端（GitHub Pages 部署）
+│   ├── index.html              # 主页面
+│   ├── app.js                  # 主逻辑（上传、渲染、散点图交互）
+│   ├── analyze.js              # 浏览器端降级分析（无后端时可用）
+│   ├── scatter-chart.js        # SVG 散点图（95% 置信椭圆、品牌颜色）
+│   ├── reference-data.json     # 76 张品牌截图预计算坐标
+│   └── styles.css              # 样式
+│
+└── backend/                    # FastAPI 后端（本地/云端部署）
+    ├── app/
+    │   ├── main.py             # API 入口（/api/analyze, /api/ai/explain）
+    │   ├── models.py           # Pydantic 数据模型
+    │   ├── scoring.py          # 评分、子指标生成、总结、改进建议
+    │   ├── analyzers/          # 四个一致性分析器
+    │   └── ai/                 # DeepSeek 增强分析
+    └── batch_analyze.py        # 批量分析生成参考数据
+```
+
+**技术栈**：Python 3.11 · FastAPI · OpenCV · NumPy · scikit-learn · Pillow · Pydantic v2 · DeepSeek API · 纯 ES6 JS（无框架）
+
+---
+
+## 四、输出结构与可解释性设计
+
+### 4.1 置信度字段
+
+`confidence` 字段基于检测到的元素数量评估分析稳定性：
+- **high**：总检测量 ≥ 80；**medium**：25–79；**low**：< 25，结果仅供参考。
+
+### 4.2 子指标可追溯性
+
+每个维度下的每条子指标（`SubMetric`）包含：
+- `raw_value`：未经处理的原始计算值
+- `unit`：物理单位（如 px、ΔE、比例）
+- `normalized_score`：归一化到 0–100 的得分
+- `formula`：使用的计算公式文字描述
+- `interpretation`：当前值对应的语义解读
+
+### 4.3 自动生成的总结字段
+
+- `overall_summary`：综合评价文字（当前水平 + 各维度表现）
+- `priority_improvements`：最多 3 条优先改进建议（具体到数值与规则）
+- `detection_summary`：检测到的图标数、文本块数、色彩聚类数等检测摘要
+
+---
+
+## 五、参考数据与品牌基准
+
+通过批量分析 76 张截图生成参考数据，当前品牌基准：
+
+| 品牌 | 截图数 | 平均 Clarity | 平均 Consistency |
+|---|---|---|---|
+| Apple | 18 | ~49 | ~65 |
+| Google | 14 | ~55 | ~61 |
+| 华为 | 12 | ~47 | ~58 |
+| 小米 | 13 | ~51 | ~56 |
+| OPPO | 10 | ~53 | ~62 |
+
+散点图中每个品牌显示平均坐标点 + 95% 置信椭圆，便于对比不同品牌的设计风格定位。
+
+---
+
+## 六、AI 增强分析模块
+
+集成 **DeepSeek API** 对评估结果进行深度解释：将 CV 分析结果打包为结构化 prompt，要求输出论文级原因分析与可执行建议（具体到数值/规则/阈值，禁止模糊表述）。
+
+---
+
+## 七、如何在本地运行
+
+### 后端（完整 CV 分析模式）
 
 ```bash
-python -m venv .venv
-.\.venv\Scripts\activate
+cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --port 8010
+# 创建 .env 文件并填入 DEEPSEEK_API_KEY=sk-xxxx
+uvicorn app.main:app --reload --port 8000
 ```
 
-打开 `http://127.0.0.1:8010/`（会跳转到 `/ui/`）。
+### 纯前端模式（GitHub Pages）
 
-> 说明：如果你机器上 `8000` 端口被占用或无权限，可继续使用 `8010`。
+无需后端，直接访问：**https://dingzhen-zhr.github.io/apple-consistency-evaluator/**
 
-## 输出与产物
+---
 
-- **在线查看**：上传后前端会展示总分、维度分、问题清单；点击“打开 HTML 报告”可查看带标注的报告。
-- **落盘产物**：每次分析会生成一个 `run_id`，并把产物保存到 `runs/<run_id>/`（相对 `personal_work/` 根目录）：
-  - `report.html`：可下载/可分享的报告
-  - `result.json`：结构化结果（便于写作业分析与复现）
-  - `input_1.png`：第 1 张输入截图备份
+## 八、与同类系统的对比分析
 
-## 设计原则与检测维度（Consistency）
+| 特性 | 本系统（一致性评估） | 同类系统（层次评估）|
+|---|---|---|
+| 评估维度 | 双轴：Clarity × Consistency | 三轴：视觉显著性差异 / 分组分离度 / 对齐一致性 |
+| 技术路线 | OpenCV CV + DeepSeek 文本解释 | OpenCV CV + 多模态 LLM 视觉判断 |
+| 置信度字段 | ✅ 基于检测元素数量 | ✅ 基于检测元素数量 + LLM 调用状态 |
+| 子指标可追溯 | ✅ raw_value + formula + interpretation | ✅ raw_value + unit + formula + interpretation |
+| 总结生成 | ✅ overall_summary（自动生成） | ✅ hierarchy_summary（自动生成） |
+| 优先改进建议 | ✅ priority_improvements（最多3条） | ✅ priority_improvements（最多3条） |
+| 品牌基准对比 | ✅ 76张参考图 + 95%椭圆 | ✅ 品牌层次方法论提取 |
 
-当前版本实现的 **可计算一致性度量**（不依赖 LLM）：  
-- **ColorConsistency**：聚类提取调色板，检测“近似色漂移”（极其相近但不同的颜色同时存在）。  
-- **SpacingAndGridConsistency**：从截图中启发式提取 UI 块，统计相邻块的间距并检查是否偏离 **8pt 网格**。
-- **TypographyConsistency**：黑帽形态学 + 连通域，估计文本高度层级数量（层级过多通常意味着字号 token 未收敛）。  
-- **ComponentStyleConsistency**：候选组件块的角落像素差异估计圆角半径分布，检测圆角 token 离群点。  
-- **CrossScreenConsistency（多图时）**：跨页面对比主色与圆角风格的漂移（用于体现“跨屏一致性”）。
+---
 
-## 分数解释（简化版）
+## 九、参考文献
 
-- 每个维度从 \(100\) 分开始，按问题严重程度扣分（low/medium/high）。
-- 总分为维度分的均值（便于在作业中解释“哪类一致性问题影响最大”）。
-
-## 一致性双轴散点图（浏览器本地）
-
-页面中的散点图横轴、纵轴分别对应两类一致性指标（由维度分聚合而成）：
-
-- **横轴**：视觉与组件一致性（`ColorConsistency` + `ComponentStyleConsistency` 的均值）
-- **纵轴**：布局与信息层级一致性（`SpacingAndGridConsistency` + `TypographyConsistency` 的均值）
-
-绿色区域表示 **双轴得分均 ≥ 70** 的「Apple 一致区」（与「是否符合苹果一致性原则」的高一致判断相对应；仍为启发式）。  
-**蓝色**点为内置参考界面（不可删除，带缩略图）；参考点的坐标会在页面启动后用**同一套分析算法对参考图片实际计算**（并缓存到 localStorage，避免每次都重复算）。  
-每次评估会在图中增加 **橙色** 你的上传记录（可点击选中并删除）。数据保存在浏览器 **localStorage**，刷新/再次打开页面仍会保留。
-
-参考素材的署名与许可见 [`ASSETS_ATTRIBUTION.md`](ASSETS_ATTRIBUTION.md)。
-
-## 让老师在线访问（GitHub Pages，纯静态/浏览器本地计算）
-
-本作业的 Web 界面是 **纯静态站点**：分析逻辑在浏览器里完成（不上传图片到任何服务器），因此 **不需要 Render / 不需要后端云部署** 也能完整演示功能。
-
-### A) 用 GitHub Pages 发布（推荐交作业方式）
-
-1. 确保仓库已 push 到 GitHub（见下方“上传到 GitHub”）。
-2. 在 GitHub 仓库 **Settings → Pages**：
-   - **Build and deployment**：选择 **GitHub Actions**
-3. push 到 `main` 分支后会触发工作流：[`.github/workflows/pages.yml`](.github/workflows/pages.yml)
-
-发布后，老师一般通过如下地址访问（示例）：
-
-`https://dingzhen-zhr.github.io/apple-consistency-evaluator/`
-
-### B) 关于“不要任何人都能访问”
-
-GitHub Pages 的站点链接 **本质上是公网可访问的**（知道链接的人就能打开），GitHub **不会**为免费账号提供“只有某个老师能打开、但又不登录”的 Pages 访问控制。
-
-如果你必须做到强访问控制，常见替代方案是：
-
-- 把仓库设为 **Private**，只邀请老师为协作者；老师用 **GitHub Codespaces / 本地运行** 打开页面（不走公网 Pages）
-- 或学校提供的私有托管/内网部署
-
-### C)（可选）仍然想保留 FastAPI 后端
-
-仓库里的 `backend/` 仍可本地运行（用于开发/扩展），但它不是 GitHub Pages 方案的必要条件。  
-仓库根目录的 [`render.yaml`](render.yaml) 也仅作为“可选云端后端”的模板，不是本作业默认路径。
-
-## 上传到 GitHub（把本目录作为独立仓库）
-
-在 `personal_work/` 目录执行：
-
-```bash
-git init
-git branch -M main
-git add .
-git commit -m "Add Apple consistency evaluator (FastAPI + static UI)"
-git remote add origin https://github.com/DingZhen-zhr/apple-consistency-evaluator.git
-git push -u origin main
-```
-
-> 说明：我无法代替你完成 `git push` 的登录授权；你需要在本机完成一次 GitHub 登录（HTTPS PAT 或 SSH key）。
->
-> 另外：请先在 GitHub 上创建 **同名空仓库** `apple-consistency-evaluator`（建议 Public）。  
-> 如果你想用别的仓库名，把上面 `git remote add origin ...` 的 URL 改成你的仓库即可。
-
+1. Apple Inc. *Human Interface Guidelines*. https://developer.apple.com/design/human-interface-guidelines/
+2. Sha Q et al. "Quantifying Visual Complexity of Smartphone User Interfaces." *MDPI Electronics* 14(5):942, 2025.
+3. Miniukovich A, De Angeli A. "Computation of Interface Aesthetics." *CHI 2014*.
+4. Nielsen J. *Usability Engineering*. Academic Press, 1994.
+5. Tractinsky N, Katz A S, Ikar D. "What is beautiful is usable." *Interacting with Computers* 13(2):127–145, 2000.
+6. Gordon K. "Visual Hierarchy in UX." Nielsen Norman Group, 2021.
+7. Urano Y et al. "Visual Hierarchy Relates to Impressions of Good Design." *ACM CHI Workshop*, 2021.

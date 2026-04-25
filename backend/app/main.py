@@ -29,10 +29,16 @@ from app.image_utils import load_image_from_bytes
 from app.models import AnalysisResult
 from app.multi_screen import cross_screen_issues
 from app.reporting.report import render_report
-from app.scoring import score_dimensions, score_from_features, score_overall
+from app.scoring import (
+    score_dimensions, score_from_features, score_overall,
+    enrich_dim_scores, generate_overall_summary,
+    generate_priority_improvements, compute_confidence,
+)
 
 from app.ai.schemas import AiExplainRequest
 from app.ai.explain import explain_with_ai
+
+from app.models import AnalysisResult, DetectionSummary
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -178,12 +184,41 @@ async def analyze(files: list[UploadFile] = File(...)):
     )
     overall = score_overall(dim_scores)
 
+    # ── Enrich dim_scores with sub-metrics, judgment, evidence, suggestion ──
+    dim_scores = enrich_dim_scores(dim_scores, avg_features)
+
+    # ── Confidence based on detection volume ──
+    confidence = compute_confidence(avg_features)
+
+    # ── Overall summary and priority improvements ──
+    overall_summary = generate_overall_summary(
+        axis_scores["clarity_score"], axis_scores["consistency_score"], dim_scores
+    )
+    priority_improvements = generate_priority_improvements(dim_scores)
+
+    # ── Detection summary ──
+    first_screen = per_screen_meta[0] if per_screen_meta else {}
+    first_feats = first_screen.get("features", {})
+    detection_summary = DetectionSummary(
+        image_width=first_screen.get("width", 0),
+        image_height=first_screen.get("height", 0),
+        detected_icons=int(avg_features.get("icon_count", 0)),
+        detected_text_elements=int(avg_features.get("text_count", 0)),
+        detected_image_regions=int(avg_features.get("image_count", 0)),
+        color_clusters=int(avg_features.get("significant_clusters", 0)),
+        corner_components=int(avg_features.get("sample_count", 0)),
+    )
+
     result = AnalysisResult(
         overall_score=overall,
         clarity_score=axis_scores["clarity_score"],
         consistency_score=axis_scores["consistency_score"],
+        confidence=confidence,
+        detection_summary=detection_summary,
         dimension_scores=dim_scores,
         issues=all_issues,
+        overall_summary=overall_summary,
+        priority_improvements=priority_improvements,
         meta={
             "analyzed_files": filenames,
             "per_screen": per_screen_meta,

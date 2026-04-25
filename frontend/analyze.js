@@ -1096,11 +1096,43 @@ export async function analyzeFiles(files, { seed = 42 } = {}) {
   const dimScores = scoreDimensions(issuesAll, dims);
   const overall = dimScores.length ? Math.round((dimScores.reduce((s, d) => s + d.score, 0) / dimScores.length) * 10) / 10 : 100;
 
+  // ── Confidence (browser heuristic: based on detected rects across screens) ──
+  const totalRects = perScreen.reduce((s, p) => s + (p.features?.spacing?.total_rects || 0), 0);
+  const confidence = totalRects >= 30 ? "high" : totalRects >= 10 ? "medium" : "low";
+
+  // ── Detection summary (browser mode) ──
+  const firstScr = perScreen[0] || {};
+  const detection_summary = {
+    image_width: firstScr.width || 0,
+    image_height: firstScr.height || 0,
+    detected_icons: 0,
+    detected_text_elements: 0,
+    detected_image_regions: 0,
+    color_clusters: perScreen[0]?.features?.palette_effective_colors || 0,
+    corner_components: 0,
+  };
+
+  // ── Overall summary ──
+  const sortedDims = [...dimScores].sort((a, b) => b.score - a.score);
+  const best = sortedDims.slice(0, 2).map(d => d.dimension).join(" / ");
+  const worst = sortedDims[sortedDims.length - 1]?.dimension || "—";
+  const level = overall >= 75 ? "较强" : overall >= 55 ? "中等" : "较弱";
+  const overall_summary = `当前界面整体一致性处于${level}水平（总分=${overall.toFixed(1)}）。表现较好的维度：${best}；主要短板：${worst}，建议优先改进。`;
+
+  // ── Priority improvements ──
+  const priority_improvements = sortedDims.slice(-3).reverse()
+    .filter(d => d.score < 80 && d.suggestion)
+    .map(d => `【${d.dimension}】${d.suggestion}`);
+
   const runId = hashString(decoded.map((d) => d.name).join("|") + String(seed)).slice(0, 12);
 
   return {
     principle: "Apple Consistency",
     overall_score: overall,
+    confidence,
+    detection_summary,
+    overall_summary,
+    priority_improvements,
     dimension_scores: dimScores,
     issues: issuesAll,
     meta: {
@@ -1122,13 +1154,29 @@ function scoreDimensions(issues, expectedDimensions) {
     if (!by.has(it.dimension)) by.set(it.dimension, []);
     by.get(it.dimension).push(it);
   }
+  const dimSuggestions = {
+    "ColorConsistency": "合并近似色为统一设计令牌，确保semantic_gap>30ΔE。",
+    "SpacingAndGridConsistency": "将所有间距对齐到4/8/12/16/24/32px的4pt网格体系。",
+    "TypographyConsistency": "合并字号层级至3-5层，相邻层比控制在1.1-1.3倍。",
+    "ComponentStyleConsistency": "统一圆角半径为Apple HIG标准值（8/12/16px）。",
+    "CrossScreenConsistency": "统一跨页面色彩Token和圆角Token，保证跨屏视觉一致。",
+  };
   const out = [];
   for (const dim of expectedDimensions) {
     const list = by.get(dim) || [];
     let penalty = 0;
     for (const it of list) penalty += it.severity === "high" ? 18 : it.severity === "medium" ? 10 : 4;
     const score = Math.max(0, Math.round((100 - penalty) * 10) / 10);
-    out.push({ dimension: dim, score, summary: `${list.length} 个问题` });
+    const level = score >= 80 ? "优秀" : score >= 60 ? "中等" : "不足";
+    out.push({
+      dimension: dim,
+      score,
+      summary: `${list.length} 个问题`,
+      judgment: `${dim}得分${score.toFixed(0)}分，整体表现${level}。`,
+      evidence: list.slice(0, 2).map(it => it.title),
+      suggestion: score < 80 ? (dimSuggestions[dim] || "参考问题列表改进。") : "当前指标良好，保持即可。",
+      metrics: [],
+    });
   }
   return out;
 }

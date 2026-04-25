@@ -120,3 +120,36 @@ input[type=file]{color:var(--muted)}
 
 .aiBlock{border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(255,255,255,.02);min-height:120px}
 .aiBlock pre{white-space:pre-wrap;margin:0;color:rgba(241,241,246,.9);font-size:13px;line-height:1.55}
+
+/* ── Confidence badge ── */
+.confBadge{display:inline-block;margin-left:10px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle}
+.confHigh{background:rgba(48,176,80,.18);color:#30b050;border:1px solid rgba(48,176,80,.4)}
+.confMed{background:rgba(224,144,32,.18);color:#e09020;border:1px solid rgba(224,144,32,.4)}
+.confLow{background:rgba(208,64,64,.18);color:#d04040;border:1px solid rgba(208,64,64,.4)}
+
+/* ── Detection summary ── */
+.detectionSummary{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ── Overall summary ── */
+.overallSummary{margin-top:10px;padding:10px 14px;border-left:3px solid rgba(10,132,255,.6);background:rgba(10,132,255,.07);border-radius:0 10px 10px 0;font-size:13px;line-height:1.6;color:rgba(241,241,246,.9)}
+
+/* ── Priority improvements ── */
+.priorityBlock{margin-top:10px;border:1px solid rgba(255,159,10,.3);border-radius:12px;padding:12px;background:rgba(255,159,10,.07)}
+.priorityTitle{font-weight:700;font-size:13px;color:#e09020;margin-bottom:8px}
+.priorityItem{font-size:13px;line-height:1.55;color:rgba(241,241,246,.9);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.priorityItem:last-child{border-bottom:none}
+
+/* ── Enhanced dimension row ── */
+.dim{flex-direction:column;border-top:1px solid var(--border);padding-top:10px;gap:6px}
+.dimHeader{display:flex;justify-content:space-between;align-items:center}
+.dimName{font-weight:650}
+.dimScore{font-size:20px;font-weight:800}
+.dimJudgment{font-size:12px;color:rgba(241,241,246,.7);line-height:1.5}
+.dimEvidence{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.dimEvidenceItem{font-size:12px;color:var(--muted);line-height:1.4}
+
+/* ── Sub-metrics table ── */
+.metricsTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+.metricsTable th{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600}
+.metricsTable td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top;line-height:1.4}
+.metricsTable tr:last-child td{border-bottom:none}

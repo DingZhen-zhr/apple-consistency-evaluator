@@ -17,12 +17,116 @@ function el(tag, className, text) {
 function renderResult(result) {
   $("score").textContent = result.overall_score.toFixed(1);
 
+  // ── Confidence badge ──
+  const confMap = { high: "高置信度", medium: "中置信度", low: "低置信度" };
+  const confClass = { high: "confHigh", medium: "confMed", low: "confLow" };
+  const conf = result.confidence || "medium";
+  const scoreEl = $("score");
+  let confBadge = document.getElementById("confBadge");
+  if (!confBadge) {
+    confBadge = el("span", "confBadge");
+    confBadge.id = "confBadge";
+    scoreEl.parentNode.insertBefore(confBadge, scoreEl.nextSibling);
+  }
+  confBadge.textContent = confMap[conf] || conf;
+  confBadge.className = "confBadge " + (confClass[conf] || "confMed");
+
+  // ── Detection summary ──
+  const ds = result.detection_summary || {};
+  let detEl = document.getElementById("detectionSummary");
+  if (!detEl) {
+    detEl = el("div", "detectionSummary");
+    detEl.id = "detectionSummary";
+    scoreEl.parentNode.insertBefore(detEl, confBadge.nextSibling);
+  }
+  if (ds.image_width) {
+    detEl.textContent = `检测摘要：${ds.image_width}×${ds.image_height}px · 图标${ds.detected_icons}个 · 文本块${ds.detected_text_elements}块 · 图片区域${ds.detected_image_regions}块 · 色彩聚类${ds.color_clusters}个 · 圆角组件${ds.corner_components}个`;
+  }
+
+  // ── Overall summary ──
+  let summaryEl = document.getElementById("overallSummary");
+  if (!summaryEl) {
+    summaryEl = el("div", "overallSummary");
+    summaryEl.id = "overallSummary";
+    detEl.parentNode.insertBefore(summaryEl, detEl.nextSibling);
+  }
+  summaryEl.textContent = result.overall_summary || "";
+
+  // ── Priority improvements ──
+  let prioEl = document.getElementById("priorityImprovements");
+  if (!prioEl) {
+    prioEl = el("div", "priorityBlock");
+    prioEl.id = "priorityImprovements";
+    summaryEl.parentNode.insertBefore(prioEl, summaryEl.nextSibling);
+  }
+  prioEl.innerHTML = "";
+  const improvements = result.priority_improvements || [];
+  if (improvements.length > 0) {
+    const title = el("div", "priorityTitle", "⬆ 优先改进建议");
+    prioEl.appendChild(title);
+    improvements.forEach((imp, i) => {
+      const item = el("div", "priorityItem", `${i + 1}. ${imp}`);
+      prioEl.appendChild(item);
+    });
+  }
+
+  // ── Dimension scores (enhanced with metrics) ──
   const dims = $("dims");
   dims.innerHTML = "";
   for (const d of result.dimension_scores || []) {
     const row = el("div", "dim");
-    row.appendChild(el("div", "", d.dimension));
-    row.appendChild(el("div", "", `${d.score.toFixed(1)}（${d.summary}）`));
+    const scoreBar = el("div", "dimHeader");
+    scoreBar.appendChild(el("div", "dimName", d.dimension));
+    const scoreNum = el("div", "dimScore", d.score.toFixed(1));
+    scoreNum.style.color = d.score >= 75 ? "#30b050" : d.score >= 55 ? "#e09020" : "#d04040";
+    scoreBar.appendChild(scoreNum);
+    row.appendChild(scoreBar);
+
+    if (d.judgment) {
+      row.appendChild(el("div", "dimJudgment", d.judgment));
+    }
+
+    // Evidence list
+    if (d.evidence && d.evidence.length > 0) {
+      const evDiv = el("div", "dimEvidence");
+      d.evidence.forEach(ev => {
+        const evItem = el("div", "dimEvidenceItem", "• " + ev);
+        evDiv.appendChild(evItem);
+      });
+      row.appendChild(evDiv);
+    }
+
+    // Sub-metrics table (expandable)
+    if (d.metrics && d.metrics.length > 0) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = `子指标明细（${d.metrics.length} 项）`;
+      summary.style.cursor = "pointer";
+      summary.style.fontSize = "12px";
+      summary.style.color = "#888";
+      details.appendChild(summary);
+      const table = document.createElement("table");
+      table.className = "metricsTable";
+      const thead = document.createElement("thead");
+      thead.innerHTML = `<tr><th>指标</th><th>原始值</th><th>单位</th><th>归一化分</th><th>解读</th></tr>`;
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      for (const m of d.metrics) {
+        const tr = document.createElement("tr");
+        const nsColor = m.normalized_score >= 70 ? "#30b050" : m.normalized_score >= 45 ? "#e09020" : "#d04040";
+        tr.innerHTML = `
+          <td title="${m.formula}">${m.key}</td>
+          <td>${m.raw_value}</td>
+          <td>${m.unit}</td>
+          <td style="color:${nsColor};font-weight:600">${m.normalized_score.toFixed(1)}</td>
+          <td>${m.interpretation}</td>`;
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      details.appendChild(table);
+      row.appendChild(details);
+    }
+
     dims.appendChild(row);
   }
 
@@ -103,6 +207,10 @@ async function analyze() {
   const result = {
     principle: payload.principle,
     overall_score: payload.overall_score,
+    confidence: payload.confidence,
+    detection_summary: payload.detection_summary,
+    overall_summary: payload.overall_summary,
+    priority_improvements: payload.priority_improvements,
     dimension_scores: payload.dimension_scores,
     issues: payload.issues,
     meta: payload.meta,
@@ -363,6 +471,10 @@ async function initBrandDataset() {
           const result = {
             principle: payload.principle,
             overall_score: payload.overall_score,
+            confidence: payload.confidence,
+            detection_summary: payload.detection_summary,
+            overall_summary: payload.overall_summary,
+            priority_improvements: payload.priority_improvements,
             dimension_scores: payload.dimension_scores,
             issues: payload.issues,
             meta: payload.meta,
