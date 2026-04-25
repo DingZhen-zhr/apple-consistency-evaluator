@@ -1,10 +1,14 @@
 ﻿"""
 Scoring module - computes axis scores and dimension scores.
 
-New dual-axis system:
+Dual-axis system:
   X-axis (Clarity): (1 - visual_complexity_01) * 100
-  Y-axis (Consistency): weighted combination of 4 consistency analyzers
-    0.30 * color_score + 0.30 * spacing_score + 0.20 * corner_score + 0.20 * typo_score
+  Y-axis (Consistency): weighted combination of 5 consistency analyzers
+    0.25 * color_score + 0.25 * spacing_score + 0.20 * corner_score
+    + 0.15 * typo_score  + 0.15 * rhythm_score
+
+Grade thresholds (overall_score = avg of Clarity + Consistency):
+  S ≥85 | A ≥70 | B ≥55 | C ≥40 | D < 40
 """
 
 from __future__ import annotations
@@ -14,10 +18,11 @@ from app.models import DimensionScore, DetectionSummary, Issue, SubMetric
 
 
 _CONSISTENCY_WEIGHTS = {
-    "ColorConsistency": 0.30,
-    "SpacingAndGridConsistency": 0.30,
+    "ColorConsistency": 0.25,
+    "SpacingAndGridConsistency": 0.25,
     "ComponentStyleConsistency": 0.20,
-    "TypographyConsistency": 0.20,
+    "TypographyConsistency": 0.15,
+    "VisualRhythm": 0.15,
 }
 
 
@@ -32,12 +37,14 @@ def score_from_features(features: dict) -> dict:
     spacing_score = features.get("spacing_score", 70.0)
     corner_score = features.get("corner_score", 70.0)
     typo_score = features.get("typo_score", 70.0)
+    rhythm_score = features.get("rhythm_score", 70.0)
 
     consistency_score = (
-        0.30 * color_score +
-        0.30 * spacing_score +
+        0.25 * color_score +
+        0.25 * spacing_score +
         0.20 * corner_score +
-        0.20 * typo_score
+        0.15 * typo_score +
+        0.15 * rhythm_score
     )
     consistency_score = round(max(0.0, min(100.0, consistency_score)), 1)
 
@@ -48,6 +55,7 @@ def score_from_features(features: dict) -> dict:
         "spacing_score": round(spacing_score, 1),
         "corner_score": round(corner_score, 1),
         "typo_score": round(typo_score, 1),
+        "rhythm_score": round(rhythm_score, 1),
     }
 
 
@@ -104,6 +112,7 @@ _DIM_NAME_CN = {
     "ComponentStyleConsistency": "组件样式一致性",
     "TypographyConsistency": "字体排版一致性",
     "VisualComplexity": "视觉清晰度",
+    "VisualRhythm": "视觉律动感",
     "CrossScreenConsistency": "跨屏一致性",
 }
 
@@ -187,7 +196,50 @@ _SUBMETRIC_SPEC: dict[str, list[dict]] = {
          "formula": "所有检测组件圆角半径的均值（仅供参考）",
          "interp_hi": "大圆角，偏向圆润风格", "interp_lo": "小圆角，偏向方正风格"},
     ],
+    "VisualRhythm": [
+        {"key": "hog_entropy", "unit": "bit", "lo": 1.5, "hi": 4.17, "hib": False,
+         "formula": "Sobel梯度方向分布香农熵 H = -Σpᵢlog₂(pᵢ)，18-bin HOG，取强度前35%像素",
+         "interp_hi": "边缘方向散乱，非正交元素多，布局律动感弱",
+         "interp_lo": "边缘集中于水平/垂直方向，网格正交感强"},
+        {"key": "anisotropy_score", "unit": "分", "lo": 0, "hi": 100, "hib": True,
+         "formula": "anisotropy_score = (1 - hog_entropy / log₂18) × 100",
+         "interp_hi": "视觉方向高度规整，排版律动感强",
+         "interp_lo": "视觉方向分散，排版缺乏方向引导"},
+        {"key": "grouping_compactness", "unit": "比例", "lo": 0.1, "hi": 0.8, "hib": True,
+         "formula": "形态学闭运算连通域内有效像素数 / 外接矩形面积（均值）",
+         "interp_hi": "信息块内部元素紧凑，分组感强",
+         "interp_lo": "信息块内部稀疏，分组感弱"},
+        {"key": "group_separation", "unit": "比例", "lo": 0.0, "hi": 1.0, "hib": True,
+         "formula": "连通域质心间最小距离均值归一化（对角线3%–20%区间映射到0–1）",
+         "interp_hi": "不同信息区块之间分离清晰",
+         "interp_lo": "信息区块间距过密，视觉粘连风险"},
+    ],
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 评级系统（Grade）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compute_grade(overall_score: float) -> str:
+    """
+    借鉴视觉律动同类系统的评级思路，将综合分映射到 S/A/B/C/D 五档：
+      S（≥85）：优秀，高度符合 Apple HIG 一致性规范
+      A（≥70）：良好，整体表现不错，有少量改进空间
+      B（≥55）：中等，存在明显一致性问题，建议针对性优化
+      C（≥40）：待改进，多维度不足，需系统性整改
+      D（<40） ：较差，一致性问题严重
+    """
+    if overall_score >= 85:
+        return "S"
+    elif overall_score >= 70:
+        return "A"
+    elif overall_score >= 55:
+        return "B"
+    elif overall_score >= 40:
+        return "C"
+    else:
+        return "D"
 
 
 def _normalize_sub(raw: float, lo: float, hi: float, hib) -> float:

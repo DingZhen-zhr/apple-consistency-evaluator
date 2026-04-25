@@ -1,176 +1,278 @@
-﻿# Apple Consistency 评估工具 — 设计规则作业说明
+﻿# Apple Consistency Evaluator
+> 多品牌 UI 设计一致性评测系统 — 工业设计专业课作业
 
-> **在线预览**：[https://dingzhen-zhr.github.io/apple-consistency-evaluator/](https://dingzhen-zhr.github.io/apple-consistency-evaluator/)
-
----
-
-## 一、设计规则选择与研究对象
-
-### 1.1 规则选择：一致性（Consistency）
-
-本作业选择 **《通用设计法则》中的"一致性（Consistency）"** 原则作为评估对象。Apple HIG（Human Interface Guidelines）将一致性分为：
-
-- **视觉一致性**：相同类型的元素应使用一致的颜色令牌、圆角、间距与字型比例；
-- **功能一致性**：相似的行为应映射到相同的视觉表示，降低用户的学习成本；
-- **外部一致性**：界面风格应与平台规范对齐，使用户能迁移已有的平台经验。
-
-在 Apple 生态中，一致性失败的直接表现包括：色板中存在近似但非完全相同的颜色（色彩漂移）、按钮/卡片圆角半径不统一、间距未对齐到 4pt 网格、字号层级过多或比例混乱。
-
-### 1.2 研究对象：移动端 UI 截图
-
-选择 **iOS/Android 移动端 UI 截图** 作为研究对象，原因如下：
-
-1. 移动端截图的视觉元素密度适中，适合用计算机视觉方法自动提取结构特征；
-2. Apple HIG 明确给出了间距（4pt 网格）、圆角（8/12/16px 标准集合）和字型（SF 字型系统）的量化规范，可作为评分基准；
-3. 不同品牌在一致性上存在显著差异，有助于验证评估系统的区分度。
+**GitHub Pages 在线体验：** https://dingzhen-zhr.github.io/apple-consistency-evaluator/
 
 ---
 
-## 二、可计算维度拆解
+## 目录
 
-本系统将"一致性"操作化为 **双轴坐标系**：
+1. [项目背景与目标](#1-项目背景与目标)
+2. [评测方法论](#2-评测方法论)
+3. [五维度算法详解](#3-五维度算法详解)
+4. [评级系统](#4-评级系统)
+5. [品牌对比分析](#5-品牌对比分析)
+6. [系统架构](#6-系统架构)
+7. [本地运行指南](#7-本地运行指南)
+8. [与同学方案对比](#8-与同学方案对比)
+9. [文件结构](#9-文件结构)
 
-| 轴 | 含义 | 评分范围 |
+---
+
+## 1 项目背景与目标
+
+现代数字产品的视觉品质越来越依赖"设计一致性"——按钮、间距、配色、字体是否在同一套体系内保持和谐。本项目以 **Apple iOS 设计规范**为锚点，构建了一套可量化的多品牌 UI 一致性评测系统：
+
+- 上传任意 UI 截图，系统在约 **2–5 秒**内输出多维度得分与详细问题报告
+- 内置 **76 张品牌参考截图**（Apple / Google / 华为 / 小米 / OPPO），可直接横向比较
+- 采用 **计算机视觉（无需训练）** 算法：HOG 梯度熵、形态学分组、Canny 边缘检测等
+- 借鉴同学的创新点，新增 **视觉律动感（VisualRhythm）**维度与 **S/A/B/C/D 评级**
+
+---
+
+## 2 评测方法论
+
+### 2.1 双轴架构
+
+| 轴 | 定义 | 权重 |
 |---|---|---|
-| **X 轴：Clarity 视觉清晰度** | 界面视觉元素的复杂度（越右越简洁） | 0–100 |
-| **Y 轴：Consistency 设计一致性** | 颜色/间距/圆角/字型的规范一致程度（越上越统一） | 0–100 |
+| **视觉清晰度 Clarity** | 边缘锐度 + 色彩对比 + 噪声抑制 | 0.4 |
+| **设计一致性 Consistency** | 五维度加权平均（见下表） | 0.6 |
 
-### 2.1 Clarity（X 轴）— 视觉复杂度分析
+**综合得分** = 0.4 × 清晰度 + 0.6 × 一致性
 
-基于 **Sha et al. (2025)** 的视觉复杂度公式：
+### 2.2 五维度权重
 
-- X1 = 图标计数（Canny 边缘 + 轮廓过滤）
-- X2 = 文本块计数（形态学 Blackhat+Tophat + 连通域分析）
-- X3 = 图片区域计数（大轮廓检测）
-- X4 = RGB 多通道香农熵
-
-clarity_score = (1 - 归一化后的复杂度值) × 100。
-
-### 2.2 Consistency（Y 轴）— 四维一致性加权
-
-Consistency = 0.30 × 色彩 + 0.30 × 间距 + 0.20 × 圆角 + 0.20 × 字型
-
-各子维度定义：
-
-**色彩一致性（ColorConsistency）**：K-means（k=8）Lab 色彩空间聚类，计算 palette_compactness、semantic_gap、near_color_pairs（ΔE≤10 的近似色对数量）。
-
-**间距与网格一致性（SpacingAndGridConsistency）**：提取 UI 块间距，与 4pt 网格（4/8/12/16/24/32px）对齐，计算 grid_alignment_ratio、mean_deviation_px、margin_std_px。
-
-**组件样式一致性（ComponentStyleConsistency）**：最小二乘圆弧拟合估计圆角半径，计算 radius_cv（变异系数）和 apple_modal_match。
-
-**字体排版一致性（TypographyConsistency）**：KDE 峰值检测字号层数，计算 tier_count、scale_harmony、apple_match_ratio。
+| 维度 | 中文名 | 权重 | 核心方法 |
+|---|---|---|---|
+| ColorConsistency | 色彩一致性 | 0.25 | K-Means 聚类，色彩主题离散度 |
+| SpacingAndGridConsistency | 间距/栅格一致性 | 0.25 | Hough 直线检测，间距变异系数 |
+| ComponentStyleConsistency | 组件风格一致性 | 0.20 | 轮廓圆角率、形状紧凑度 |
+| TypographyConsistency | 排版一致性 | 0.15 | MSER 文字区域，字高比变异系数 |
+| **VisualRhythm** | **视觉律动感** | **0.15** | **HOG 梯度熵 + 形态学分组致密度** |
 
 ---
 
-## 三、系统工程架构
+## 3 五维度算法详解
+
+### 3.1 色彩一致性（ColorConsistency）
+
+将图像降采样后用 K-Means（k=8）聚类像素，计算主色调在 Lab 色彩空间的离散度：
+
+$$\text{score} = 100 \times \left(1 - \frac{\sigma_{\text{Lab}}}{\sigma_{\max}}\right)$$
+
+当聚类中心分布越集中（主色调统一），分数越高。同时检测高对比色对（ΔE > 40）数量。
+
+### 3.2 间距/栅格一致性（SpacingAndGrid）
+
+对水平与垂直边缘分别做 Hough 线检测，提取相邻线段的间距序列：
+
+$$\text{CV} = \frac{\sigma(\Delta d)}{\mu(\Delta d)}, \quad \text{score} = 100 \times (1 - \min(\text{CV}, 1))$$
+
+变异系数 CV 越小说明间距越均匀，得分越高。
+
+### 3.3 组件风格一致性（ComponentStyle）
+
+检测所有封闭轮廓，统计带圆角组件（圆度 > 0.7）的比例，并计算轮廓面积的变异系数：
+
+$$\text{score} = 0.5 \times r_{\text{round}} \times 100 + 0.5 \times (1 - \text{CV}_{\text{area}}) \times 100$$
+
+### 3.4 排版一致性（Typography）
+
+用 MSER 检测文字候选区，提取各区域的高宽比，计算变异系数与字高分层数量：
+
+$$\text{score} = 100 \times \left(1 - \frac{|\text{层级数} - 3|}{3}\right) \times (1 - \text{CV}_{\text{ratio}})$$
+
+理想情况下界面应有 3 个字级（标题/正文/辅助）。
+
+### 3.5 视觉律动感（VisualRhythm）★ 新增
+
+本维度借鉴同学的**视觉各向异性**思路，融合两个子指标：
+
+#### 3.5.1 HOG 梯度方向熵
+
+对灰度图做 Sobel 梯度，取幅值前 35% 的像素，统计 18-bin（0°–180°）方向直方图，计算 Shannon 熵：
+
+$$H = -\sum_{i=1}^{18} p_i \log_2 p_i, \quad H \in [0, \log_2 18 \approx 4.17]$$
+
+各向**异性度**（方向集中程度）：
+
+$$\text{anisotropy} = 100 \times \left(1 - \frac{H}{\log_2 18}\right)$$
+
+优秀的 UI 设计以水平/垂直方向为主（高各向异性），H 较低，分数较高。
+
+#### 3.5.2 形态学分组致密度
+
+对 Canny 边缘图做形态学闭运算（9×9 核，2 次迭代），通过连通域分析得到 n 个视觉组：
+
+$$D_i = \frac{A_i^{\text{pixels}}}{A_i^{\text{bbox}}}, \quad \text{compactness} = \overline{D_i}$$
+
+组间分离度用归一化平均最近质心距计算：
+
+$$\text{separation} = \text{clip}\!\left(\frac{\bar{d}_{\min}}{0.03 \cdot \text{diag}},\ 0,\ 1\right)$$
+
+最终律动感得分：
+
+$$\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \text{compactness} \times 100 + 0.15 \times \text{separation} \times 100$$
+
+---
+
+## 4 评级系统
+
+参考 Apple 设计奖评审标准，综合得分对应五级评定：
+
+| 等级 | 阈值 | 含义 |
+|---|---|---|
+| **S** | ≥ 85 | 卓越，对标 Apple HIG 最高标准 |
+| **A** | ≥ 70 | 优秀，设计规范完整 |
+| **B** | ≥ 55 | 良好，存在少量不一致 |
+| **C** | ≥ 40 | 一般，需改进 |
+| **D** | < 40 | 较差，基础规范未遵循 |
+
+---
+
+## 5 品牌对比分析
+
+基于内置的 76 张参考截图（每品牌约 15 张）自动计算以下图表：
+
+### 5.1 多维度得分对比
+
+![品牌多维度对比](docs/charts/chart_01_brand_comparison.png)
+
+### 5.2 得分分布箱线图
+
+![得分分布](docs/charts/chart_02_score_distribution.png)
+
+> 箱线图展示了各品牌得分的中位数、四分位距与极值，反映品牌内部一致性的稳定程度。
+
+### 5.3 设计维度雷达图
+
+![雷达图](docs/charts/chart_03_dimension_radar.png)
+
+> Apple 在排版和色彩维度得分突出；华为在间距一致性上表现稳定；Google Material Design 在组件风格上有较高得分。
+
+### 5.4 清晰度 × 一致性散点图
+
+![散点图](docs/charts/chart_04_scatter_all.png)
+
+> 散点附带 95% 置信椭圆，反映品牌整体聚集程度。Apple 置信椭圆最小，说明其设计系统最稳定。
+
+---
+
+## 6 系统架构
 
 ```
 personal_work/
-├── frontend/                   # 纯 HTML+JS 前端（GitHub Pages 部署）
-│   ├── index.html              # 主页面
-│   ├── app.js                  # 主逻辑（上传、渲染、散点图交互）
-│   ├── analyze.js              # 浏览器端降级分析（无后端时可用）
-│   ├── scatter-chart.js        # SVG 散点图（95% 置信椭圆、品牌颜色）
-│   ├── reference-data.json     # 76 张品牌截图预计算坐标
-│   └── styles.css              # 样式
-│
-└── backend/                    # FastAPI 后端（本地/云端部署）
-    ├── app/
-    │   ├── main.py             # API 入口（/api/analyze, /api/ai/explain）
-    │   ├── models.py           # Pydantic 数据模型
-    │   ├── scoring.py          # 评分、子指标生成、总结、改进建议
-    │   ├── analyzers/          # 四个一致性分析器
-    │   └── ai/                 # DeepSeek 增强分析
-    └── batch_analyze.py        # 批量分析生成参考数据
+├── backend/               # FastAPI 后端（Python 3.11）
+│   ├── app/
+│   │   ├── analyzers/     # 五个 CV 分析器
+│   │   │   ├── color_consistency.py
+│   │   │   ├── spacing_grid.py
+│   │   │   ├── typography.py
+│   │   │   ├── component_style.py
+│   │   │   └── visual_rhythm.py   ★ 新增
+│   │   ├── ai/            # DeepSeek API 智能解读
+│   │   ├── scoring.py     # 加权评分 + 评级逻辑
+│   │   ├── models.py      # Pydantic 数据模型
+│   │   └── main.py        # FastAPI 入口
+│   └── generate_charts.py # 图表生成脚本
+├── frontend/              # 纯 ES6 前端（无框架）
+│   ├── app.js             # 主交互逻辑
+│   ├── scatter-chart.js   # SVG 散点图
+│   └── reference-data.json  # 76 张预计算参考数据
+└── docs/
+    └── charts/            # 自动生成的 PNG 图表
 ```
 
-**技术栈**：Python 3.11 · FastAPI · OpenCV · NumPy · scikit-learn · Pillow · Pydantic v2 · DeepSeek API · 纯 ES6 JS（无框架）
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/analyze` | 上传图片，返回完整分析结果（含 grade） |
+| `GET`  | `/health`  | 服务健康检查 |
+
+### 返回结构（简化）
+
+```json
+{
+  "overall_score": 72.4,
+  "grade": "A",
+  "clarity_score": 68.1,
+  "consistency_score": 75.3,
+  "confidence": 0.83,
+  "dimensions": {
+    "ColorConsistency": { "score": 78, "issues": [...], "sub_metrics": [...] },
+    "VisualRhythm":     { "score": 65, "features": { "hog_entropy": 2.8, "anisotropy_score": 33 } }
+  }
+}
+```
 
 ---
 
-## 四、输出结构与可解释性设计
+## 7 本地运行指南
 
-### 4.1 置信度字段
+### 环境要求
 
-`confidence` 字段基于检测到的元素数量评估分析稳定性：
-- **high**：总检测量 ≥ 80；**medium**：25–79；**low**：< 25，结果仅供参考。
+- Python 3.11+，依赖见 `backend/requirements.txt`
+- 主要包：`fastapi uvicorn opencv-python scikit-learn Pillow matplotlib`
 
-### 4.2 子指标可追溯性
+### 启动步骤
 
-每个维度下的每条子指标（`SubMetric`）包含：
-- `raw_value`：未经处理的原始计算值
-- `unit`：物理单位（如 px、ΔE、比例）
-- `normalized_score`：归一化到 0–100 的得分
-- `formula`：使用的计算公式文字描述
-- `interpretation`：当前值对应的语义解读
+```bash
+# 1. 安装依赖
+cd backend
+pip install -r requirements.txt
 
-### 4.3 自动生成的总结字段
+# 2. 配置 DeepSeek API（可选，无 key 时跳过 AI 解读）
+cp .env.example .env   # 填入 DEEPSEEK_API_KEY
 
-- `overall_summary`：综合评价文字（当前水平 + 各维度表现）
-- `priority_improvements`：最多 3 条优先改进建议（具体到数值与规则）
-- `detection_summary`：检测到的图标数、文本块数、色彩聚类数等检测摘要
+# 3. 启动后端
+uvicorn app.main:app --reload --port 8000
 
----
+# 4. 浏览器打开前端
+# 直接用 VS Code Live Server 或静态文件服务打开 frontend/index.html
+```
 
-## 五、参考数据与品牌基准
-
-通过批量分析 76 张截图生成参考数据，当前品牌基准：
-
-| 品牌 | 截图数 | 平均 Clarity | 平均 Consistency |
-|---|---|---|---|
-| Apple | 18 | ~49 | ~65 |
-| Google | 14 | ~55 | ~61 |
-| 华为 | 12 | ~47 | ~58 |
-| 小米 | 13 | ~51 | ~56 |
-| OPPO | 10 | ~53 | ~62 |
-
-散点图中每个品牌显示平均坐标点 + 95% 置信椭圆，便于对比不同品牌的设计风格定位。
-
----
-
-## 六、AI 增强分析模块
-
-集成 **DeepSeek API** 对评估结果进行深度解释：将 CV 分析结果打包为结构化 prompt，要求输出论文级原因分析与可执行建议（具体到数值/规则/阈值，禁止模糊表述）。
-
----
-
-## 七、如何在本地运行
-
-### 后端（完整 CV 分析模式）
+### 生成图表
 
 ```bash
 cd backend
-pip install -r requirements.txt
-# 创建 .env 文件并填入 DEEPSEEK_API_KEY=sk-xxxx
-uvicorn app.main:app --reload --port 8000
+python generate_charts.py
+# 输出到 ../docs/charts/*.png
 ```
 
-### 纯前端模式（GitHub Pages）
+---
 
-无需后端，直接访问：**https://dingzhen-zhr.github.io/apple-consistency-evaluator/**
+## 8 与同学方案对比
+
+| 特性 | 本方案 | 同学 A（Glanceability） | 同学 B（视觉各向异性） |
+|---|---|---|---|
+| 评测维度数 | **5** | 3（扫视性/视觉层次/信息密度） | 2（各向异性/边缘密度） |
+| 评级系统 | **S/A/B/C/D**（借鉴 A） | S/A/B/C/D ✓ | 无 |
+| HOG 方向分析 | **✓**（借鉴 B） | ✗ | ✓ |
+| 形态学分组 | **✓**（新增） | ✗ | 部分 |
+| 多品牌对比 | **✓**（76张参考库） | ✗ | ✗ |
+| AI 文字解读 | **✓**（DeepSeek） | ✗ | ✗ |
+| 前端可视化 | **✓**（散点图/雷达图） | 基础 | ✗ |
+| 无需模型训练 | **✓** | ✓ | ✓ |
+
+**借鉴说明：**
+- 从同学 B 的**视觉各向异性**方法中提取了 HOG 梯度熵 + 形态学闭运算分组的思路，融合为本系统的 VisualRhythm 维度
+- 从同学 A 的**Glanceability 评分体系**中借鉴了 S/A/B/C/D 五级评定阈值设计（85/70/55/40），并增加了子指标置信度
 
 ---
 
-## 八、与同类系统的对比分析
+## 9 文件结构
 
-| 特性 | 本系统（一致性评估） | 同类系统（层次评估）|
-|---|---|---|
-| 评估维度 | 双轴：Clarity × Consistency | 三轴：视觉显著性差异 / 分组分离度 / 对齐一致性 |
-| 技术路线 | OpenCV CV + DeepSeek 文本解释 | OpenCV CV + 多模态 LLM 视觉判断 |
-| 置信度字段 | ✅ 基于检测元素数量 | ✅ 基于检测元素数量 + LLM 调用状态 |
-| 子指标可追溯 | ✅ raw_value + formula + interpretation | ✅ raw_value + unit + formula + interpretation |
-| 总结生成 | ✅ overall_summary（自动生成） | ✅ hierarchy_summary（自动生成） |
-| 优先改进建议 | ✅ priority_improvements（最多3条） | ✅ priority_improvements（最多3条） |
-| 品牌基准对比 | ✅ 76张参考图 + 95%椭圆 | ✅ 品牌层次方法论提取 |
+```
+frontend/reference-data.json   # 76 张预计算品牌截图数据
+frontend/assets/reference/     # 原始品牌截图（apple/google/huawei/xiaomi/oppo）
+backend/app/analyzers/         # 5 个独立 CV 分析器模块
+backend/app/scoring.py         # 加权评分 + 评级 + 子指标说明
+backend/app/models.py          # AnalysisResult / DimensionScore / SubMetric
+docs/charts/                   # 自动生成的品牌对比图表（PNG）
+```
 
 ---
 
-## 九、参考文献
-
-1. Apple Inc. *Human Interface Guidelines*. https://developer.apple.com/design/human-interface-guidelines/
-2. Sha Q et al. "Quantifying Visual Complexity of Smartphone User Interfaces." *MDPI Electronics* 14(5):942, 2025.
-3. Miniukovich A, De Angeli A. "Computation of Interface Aesthetics." *CHI 2014*.
-4. Nielsen J. *Usability Engineering*. Academic Press, 1994.
-5. Tractinsky N, Katz A S, Ikar D. "What is beautiful is usable." *Interacting with Computers* 13(2):127–145, 2000.
-6. Gordon K. "Visual Hierarchy in UX." Nielsen Norman Group, 2021.
-7. Urano Y et al. "Visual Hierarchy Relates to Impressions of Good Design." *ACM CHI Workshop*, 2021.
+*本项目为工业设计专业"信息与交互"课程个人作业。算法设计参考 Apple Human Interface Guidelines，数据仅供学术研究使用。*

@@ -24,6 +24,7 @@ from app.analyzers.color_consistency import ColorConsistencyAnalyzer
 from app.analyzers.component_style import ComponentStyleConsistencyAnalyzer
 from app.analyzers.spacing_grid import SpacingGridConsistencyAnalyzer
 from app.analyzers.typography import TypographyConsistencyAnalyzer
+from app.analyzers.visual_rhythm import VisualRhythmAnalyzer
 from app.visual_complexity import VisualComplexityAnalyzer
 from app.image_utils import load_image_from_bytes
 from app.models import AnalysisResult
@@ -33,6 +34,7 @@ from app.scoring import (
     score_dimensions, score_from_features, score_overall,
     enrich_dim_scores, generate_overall_summary,
     generate_priority_improvements, compute_confidence,
+    compute_grade,
 )
 
 from app.ai.schemas import AiExplainRequest
@@ -100,6 +102,7 @@ async def analyze(files: list[UploadFile] = File(...)):
         SpacingGridConsistencyAnalyzer(),
         TypographyConsistencyAnalyzer(),
         ComponentStyleConsistencyAnalyzer(),
+        VisualRhythmAnalyzer(),
     ]
     # Clarity analyzer
     clarity_analyzer = VisualComplexityAnalyzer()
@@ -190,6 +193,9 @@ async def analyze(files: list[UploadFile] = File(...)):
     # ── Confidence based on detection volume ──
     confidence = compute_confidence(avg_features)
 
+    # ── Grade (S/A/B/C/D) ──
+    grade = compute_grade(overall)
+
     # ── Overall summary and priority improvements ──
     overall_summary = generate_overall_summary(
         axis_scores["clarity_score"], axis_scores["consistency_score"], dim_scores
@@ -213,6 +219,7 @@ async def analyze(files: list[UploadFile] = File(...)):
         overall_score=overall,
         clarity_score=axis_scores["clarity_score"],
         consistency_score=axis_scores["consistency_score"],
+        grade=grade,
         confidence=confidence,
         detection_summary=detection_summary,
         dimension_scores=dim_scores,

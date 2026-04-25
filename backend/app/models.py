@@ -58,6 +58,7 @@ class AnalysisResult(BaseModel):
     overall_score: float = Field(ge=0, le=100)
     clarity_score: float = Field(ge=0, le=100, default=50.0)
     consistency_score: float = Field(ge=0, le=100, default=50.0)
+    grade: str = "C"  # S / A / B / C / D  (S≥85, A≥70, B≥55, C≥40, D<40)
     confidence: Literal["low", "medium", "high"] = "medium"
     detection_summary: DetectionSummary = Field(default_factory=DetectionSummary)
     dimension_scores: list[DimensionScore]
