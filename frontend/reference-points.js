@@ -15,8 +15,8 @@ export const REFERENCE_POINTS = [
     y: 86,
     imageUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
     thumbUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_18.4.1_screenshot_(2025).png",
-    license: "CC BY-SA 4.0",
+    sourceUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
+    license: "本地素材",
   },
   {
     id: "ref-apple-ios-17-lock",
@@ -26,8 +26,8 @@ export const REFERENCE_POINTS = [
     y: 70,
     imageUrl: "./assets/reference/apple/ios_17_lockscreen.png",
     thumbUrl: "./assets/reference/apple/ios_17_lockscreen.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17_Lockscreen.png",
-    license: "Public domain",
+    sourceUrl: "./assets/reference/apple/ios_17_lockscreen.png",
+    license: "本地素材",
   },
   {
     id: "ref-apple-ios-17-2-kbd-n",
@@ -37,8 +37,8 @@ export const REFERENCE_POINTS = [
     y: 74,
     imageUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
     thumbUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17.2_screenshot_showing_the_Northern_S%C3%A1mi_virtual_keyboard.png",
-    license: "CC0 1.0",
+    sourceUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
+    license: "本地素材",
   },
   {
     id: "ref-apple-ios-17-2-kbd-p",
@@ -48,8 +48,8 @@ export const REFERENCE_POINTS = [
     y: 74,
     imageUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
     thumbUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:IOS_17.2_screenshot_showing_the_Pite_Sami_virtual_keyboard.png",
-    license: "CC0 1.0",
+    sourceUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
+    license: "本地素材",
   },
 ];
 
@@ -124,8 +124,8 @@ export async function loadReferenceData() {
         y: d.consistency_score,
         imageUrl: imgUrl,
         thumbUrl: imgUrl,
-        sourceUrl: "",
-        license: "",
+        sourceUrl: imgUrl,
+        license: imgUrl ? "本地素材" : "",
         features: {
           color_score: d.color_score,
           spacing_score: d.spacing_score,
