@@ -778,16 +778,37 @@ btnAi?.addEventListener?.("click", () => {
   });
 });
 
+/** 从 localStorage 或 config.js 读取 API 地址 */
+function getApiBase() {
+  const saved = localStorage.getItem("apple-consistency-api-url");
+  return (saved || window.__API_BASE__ || "").replace(/\/+$/, "");
+}
+
+/** 提示用户输入 API 地址并保存 */
+function promptApiBase() {
+  const current = getApiBase();
+  const entered = window.prompt(
+    "请输入后端 API 地址（示例：http://127.0.0.1:8000）\n\n· 本地运行：在 backend/ 目录执行 uvicorn app.main:app\n· Render 等云服务：填入对应的公网 URL",
+    current || "http://127.0.0.1:8000"
+  );
+  if (!entered) return "";
+  const url = entered.trim().replace(/\/+$/, "");
+  localStorage.setItem("apple-consistency-api-url", url);
+  return url;
+}
+
 async function runAiExplain() {
   if (!__lastResult || !__lastPayload?.first_bitmap) {
-    alert("请先完成一次评估（上传并点击“开始评估”），再运行 AI 增强分析。");
+    alert("请先完成一次评估（上传并点击\u201c开始评估\u201d），再运行 AI 增强分析。");
     return;
   }
-  const apiBase = (window.__API_BASE__ || "").replace(/\/+$/, "");
+
+  let apiBase = getApiBase();
   if (!apiBase) {
-    alert("当前为纯静态模式，未配置后端 API，因此无法调用 AI。请在本地启动 backend 并设置 PUBLIC_API_BASE 指向它。");
-    return;
+    apiBase = promptApiBase();
+    if (!apiBase) return;   // 用户取消
   }
+
   if (aiBlock) aiBlock.innerHTML = `<div class="hint">AI 正在生成详尽原因分析…</div>`;
 
   const imageDataUrl = await bitmapToThumbDataUrl(__lastPayload.first_bitmap, 560);
@@ -797,11 +818,24 @@ async function runAiExplain() {
     result: __lastResult,
     image_data_url: imageDataUrl,
   };
-  const res = await fetch(`${apiBase}/api/ai/explain`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+
+  let res;
+  try {
+    res = await fetch(`${apiBase}/api/ai/explain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    if (aiBlock) aiBlock.innerHTML = `<div class="hint" style="color:#c00">无法连接到 ${apiBase}，请确认后端已启动或重新设置地址。</div>`;
+    const retry = window.confirm(`无法连接到 ${apiBase}。\n\n是否重新设置后端地址？`);
+    if (retry) {
+      const newBase = promptApiBase();
+      if (newBase) runAiExplain();
+    }
+    return;
+  }
+
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   __lastResult.ai = data;

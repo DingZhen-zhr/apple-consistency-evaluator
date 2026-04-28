@@ -27,22 +27,29 @@ BRAND_COLORS = {
     "apple":   "#1D1D1F",
     "google":  "#4285F4",
     "huawei":  "#CF0A2C",
+    "honor":   "#E4002B",
     "xiaomi":  "#FF6900",
     "oppo":    "#1B7A4E",
+    "samsung": "#1428A0",
+    "vivo":    "#415FFF",
 }
 BRAND_CN = {
-    "apple":  "Apple",
-    "google": "Google",
-    "huawei": "华为",
-    "xiaomi": "小米",
-    "oppo":   "OPPO",
+    "apple":   "Apple",
+    "google":  "Google",
+    "huawei":  "华为",
+    "honor":   "荣耀",
+    "xiaomi":  "小米",
+    "oppo":    "OPPO",
+    "samsung": "三星",
+    "vivo":    "vivo",
 }
 
 # ── 读数据 ─────────────────────────────────────────────────
 with open(DATA_FILE, "r", encoding="utf-8") as f:
     raw = json.load(f)
 
-brands = list(BRAND_COLORS.keys())
+# 只保留数据中实际存在的品牌，按 BRAND_COLORS 顺序
+brands = [b for b in BRAND_COLORS if any(d["brand"] == b for d in raw)]
 
 def by_brand(key):
     return {b: [d[key] for d in raw if d["brand"] == b] for b in brands}

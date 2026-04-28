@@ -147,9 +147,17 @@ $$\text{Overall} = 0.4 \times \text{Clarity} + 0.6 \times \text{Consistency}$$
 1. 将图像降采样至 200×200 像素（减少计算量，不影响色彩分布特征）
 2. 将 RGB 像素转换到 **CIELAB 色彩空间**（Lab）——Lab 的欧氏距离更接近人眼对色差的感知
 3. 对 Lab 像素运行 K-Means（k=8），得到 8 个聚类中心
-4. 计算聚类中心之间的色差方差 $\sigma_{\text{Lab}}$
+4. 计算聚类中心之间的色差方差 
+   $$
+   \sigma_{\text{Lab}}
+   $$
+   
 
-$$\text{score} = 100 \times \left(1 - \frac{\sigma_{\text{Lab}}}{\sigma_{\max}}\right), \quad \sigma_{\max} = 50$$
+$$
+\text{score} = 100 \times \left(1 - \frac{\sigma_{\text{Lab}}}{\sigma_{\max}}\right), \quad \sigma_{\max} = 50
+$$
+
+
 
 5. 额外检测：若存在色差 $\Delta E > 40$ 的高对比色对（可能是设计风格突变或错误），生成 `medium` 级别问题
 
@@ -167,10 +175,18 @@ $$\text{score} = 100 \times \left(1 - \frac{\sigma_{\text{Lab}}}{\sigma_{\max}}\
 **算法步骤：**
 1. 将图像转为灰度，使用 Canny 检测边缘
 2. 分别对水平方向与垂直方向运行 **Hough 直线变换**，提取显著的边缘线
-3. 对检测到的水平线按 y 坐标排序，计算相邻线段间距序列 $\{\Delta d_1, \Delta d_2, \ldots\}$
+3. 对检测到的水平线按 y 坐标排序，计算相邻线段间距序列 
+   $$
+   \{\Delta d_1, \Delta d_2, \ldots\}
+   $$
+   
 4. 计算间距序列的**变异系数（CV）**：
 
-$$\text{CV} = \frac{\sigma(\Delta d)}{\mu(\Delta d)}, \quad \text{score} = 100 \times (1 - \min(\text{CV},\ 1))$$
+$$
+\text{CV} = \frac{\sigma(\Delta d)}{\mu(\Delta d)}, \quad \text{score} = 100 \times (1 - \min(\text{CV},\ 1))
+$$
+
+
 
 5. 对垂直方向做同样处理，取水平/垂直得分的加权均值
 
@@ -189,18 +205,35 @@ $$\text{CV} = \frac{\sigma(\Delta d)}{\mu(\Delta d)}, \quad \text{score} = 100 \
 1. 用 Canny + `findContours` 提取所有封闭轮廓
 2. 对每个轮廓计算**圆度（circularity）**：
 
-$$\text{circularity} = \frac{4\pi \cdot A}{P^2}$$
+$$
+\text{circularity} = \frac{4\pi \cdot A}{P^2}
+$$
 
 其中 $A$ 为面积，$P$ 为周长。圆度 = 1 时为正圆，正方形 ≈ 0.785，直角矩形更低。
 
-3. 统计圆度 > 0.7 的轮廓（"带圆角组件"）占比 $r_{\text{round}}$
+3. 统计圆度 > 0.7 的轮廓（"带圆角组件"）占比 
+   $$
+   r_{\text{round}}
+   $$
+   
 4. 计算所有轮廓面积的变异系数 $\text{CV}_{\text{area}}$（反映组件尺寸是否统一）
 
-$$\text{score} = 0.5 \times r_{\text{round}} \times 100 + 0.5 \times (1 - \text{CV}_{\text{area}}) \times 100$$
+$$
+\text{score} = 0.5 \times r_{\text{round}} \times 100 + 0.5 \times (1 - \text{CV}_{\text{area}}) \times 100
+$$
 
 **解读：**
+
 - 圆角比例高、面积变异小 → 界面组件风格统一
-- 若 $r_{\text{round}}$ 极高（> 0.85）但 $\text{CV}_{\text{area}}$ 也大 → 大量圆形但尺寸混乱（可能有图标/头像污染）
+- 若 
+  $$
+  r_{\text{round}}
+  $$
+  极高（> 0.85）但 
+  $$
+  \text{CV}_{\text{area}}
+  $$
+  也大 → 大量圆形但尺寸混乱（可能有图标/头像污染）
 
 ### 4.4 排版一致性（TypographyConsistency）
 
@@ -212,9 +245,15 @@ $$\text{score} = 0.5 \times r_{\text{round}} \times 100 + 0.5 \times (1 - \text{
 1. 使用 **MSER（最稳定极值区域）** 检测器提取文字候选区域——MSER 对文字的笔画区域有天然的稳定性
 2. 计算每个候选区的高宽比，过滤明显异常值
 3. 用字高（高宽比的高度维度）聚类，统计层级数 $L$
-4. 计算字高分布的变异系数 $\text{CV}_{\text{ratio}}$
+4. 计算字高分布的变异系数 
+   $$
+   \text{CV}_{\text{ratio}}
+   $$
+   
 
-$$\text{score} = 100 \times \left(1 - \frac{|L - 3|}{3}\right) \times (1 - \text{CV}_{\text{ratio}})$$
+$$
+\text{score} = 100 \times \left(1 - \frac{|L - 3|}{3}\right) \times (1 - \text{CV}_{\text{ratio}})
+$$
 
 **解读：**
 - 该维度受截图内容影响较大（纯图片或全屏视频的页面检测到的文字极少）
@@ -239,11 +278,17 @@ $$\text{score} = 100 \times \left(1 - \frac{|L - 3|}{3}\right) \times (1 - \text
 3. 将梯度方向映射到 **18 个 bin**（每个 bin 覆盖 10°，共 0°–180°）
 4. 计算方向直方图的 **Shannon 熵**：
 
-$$H = -\sum_{i=1}^{18} p_i \log_2 p_i, \quad H \in \left[0,\ \log_2 18 \approx 4.17 \right]$$
+$$
+H = -\sum_{i=1}^{18} p_i \log_2 p_i, \quad H \in \left[0,\ \log_2 18 \approx 4.17 \right]
+$$
+
+
 
 5. 将熵转为**各向异性得分**（熵越低 → 方向越集中 → 各向异性越高）：
 
-$$\text{anisotropy} = 100 \times \left(1 - \frac{H}{\log_2 18}\right)$$
+$$
+\text{anisotropy} = 100 \times \left(1 - \frac{H}{\log_2 18}\right)
+$$
 
 **直觉解释：**  
 设想两种极端情况：
@@ -266,13 +311,17 @@ $D_i = 1$ 表示该分组完全填满其外接矩形（极致紧凑）；$D_i \t
 
 5. 计算**组间分离度**（归一化的平均最近质心距离）：
 
-$$\text{separation} = \text{clip}\!\left(\frac{\bar{d}_{\min}}{0.03 \times d_{\text{diag}}},\ 0,\ 1\right)$$
+$$
+\text{separation} = \text{clip}\!\left(\frac{\bar{d}_{\min}}{0.03 \times d_{\text{diag}}},\ 0,\ 1\right)
+$$
 
 其中 $d_{\text{diag}}$ 为图像对角线长度，0.03 为经验归一化系数。
 
 #### 4.5.3 律动感综合得分
 
-$$\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \bar{D} \times 100 + 0.15 \times \text{separation} \times 100$$
+$$
+\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \bar{D} \times 100 + 0.15 \times \text{separation} \times 100
+$$
 
 **权重解释：** 各向异性是最核心的律动感信号（0.55）；致密度反映布局质量（0.30）；分离度是辅助指标（0.15）。
 
@@ -312,7 +361,20 @@ $$\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \bar{D} \ti
 
 ## 6 品牌对比分析
 
-本节基于内置的 **76 张参考截图**（Apple 约 18 张、其他品牌各约 15 张）进行横向分析。所有截图均为各品牌官方 App 截图，覆盖主页、列表页、详情页等多种页面类型。
+本节基于内置的 **76 张参考截图**进行横向分析，覆盖 **8 个品牌**：
+
+| 品牌 | 数量 | 说明 |
+|------|------|------|
+| Apple | 46 | 包含 5 张官方截图及 41 张真机 iPhone 截图（IMG_xxxx） |
+| OPPO | 6 | OPPO 官方 App 截图 |
+| Huawei | 5 | 华为 EMUI/HarmonyOS 截图 |
+| Honor | 5 | 荣耀 Magic UI 截图 |
+| Vivo | 5 | vivo OriginOS 截图 |
+| Google | 3 | Android/Pixel 截图 |
+| Samsung | 3 | 三星 One UI 截图 |
+| Xiaomi | 3 | 小米 MIUI 截图 |
+
+> **说明**：Apple 截图数量较多（46 张），是因为数据集包含了大量真实 iPhone 用户截图（文件名格式 `IMG_xxxx.PNG`），这些截图均来自 iOS 设备，品牌标注为 apple 是正确的。所有截图均覆盖主页、列表页、详情页等多种页面类型。
 
 ### 6.1 多维度得分对比
 
@@ -323,6 +385,9 @@ $$\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \bar{D} \ti
 - **Apple** 在色彩一致性与排版一致性维度领先，反映其严格的设计系统管控。Apple 的 iOS 应用普遍使用 San Francisco 字体族与系统色彩 API，从规范层面保证了一致性。
 - **Google** 在组件风格（圆角/形状）维度得分较高，Material You 设计语言在圆角与动态色彩的统一性上有突出表现。但因 Material Design 允许更高的色彩饱和度与对比度，色彩一致性得分略低于 Apple。
 - **华为** 在间距/栅格维度表现稳定，华为 EMUI/HarmonyOS 的栅格系统执行较为规范。
+- **荣耀（Honor）** 与华为共用 Magic UI 底层设计语言，得分分布与华为相近，间距与排版维度表现良好。
+- **三星（Samsung）** One UI 的分层设计使其在清晰度维度得分较高，但色彩多样性有时会拉低色彩一致性得分。
+- **vivo** OriginOS 采用了较为个性化的设计语言，色彩饱和度较高，与 HIG 标准差异较大。
 - **小米** 与 **OPPO** 在多个维度分数相近，整体处于"A–B 级"区间，设计质量随应用类型波动较大。
 
 ### 6.2 得分分布箱线图
@@ -362,8 +427,10 @@ $$\text{rhythm\_score} = 0.55 \times \text{anisotropy} + 0.30 \times \bar{D} \ti
 
 **关键发现：**
 - Apple 的椭圆面积最小，且位于右上象限（高清晰度 × 高一致性），是评测系统的预期"锚点"
-- Google 椭圆与 Apple 相近但略大，位置略偏左（清晰度略低）
+- Google 椭圆与 Apple 相近，位置略偏左（清晰度略低），反映其跨平台适配带来的轻微分散
+- 华为与荣耀的椭圆位置相近，均集中在中高分区间，体现了共同的设计规范基础
 - 小米和 OPPO 的椭圆较大且向 Y 轴（一致性）延伸，说明不同页面类型间一致性差异显著
+- 三星和 vivo 的样本量较少（各 3–5 张），椭圆置信度较低，需更多数据验证
 - 右下象限（高清晰低一致）的截图通常是含有大量品牌图片/Banner 的首页，图像清晰但设计元素混杂
 
 ---
