@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+﻿# This is a simplified implementation of the backend for the Apple Consistency UI Evaluator.
+# It provides an API to analyze uploaded screenshots and generate a report with scores and issues.
+# The main logic is in the /api/analyze endpoint, which runs multiple analyzers on the uploaded images, aggregates results, and renders a report.
+from __future__ import annotations
 
 import json
 import os
