@@ -6,7 +6,7 @@
  * }} options
  */
 export function createScatterChart(container, options = {}) {
-  const onSelectionChange = options.onSelectionChange || (() => {});
+  const onSelectionChange = options.onSelectionChange || (() => { });
 
   const inner = document.createElement("div");
   inner.className = "scatterInner";

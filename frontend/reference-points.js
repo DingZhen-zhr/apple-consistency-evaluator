@@ -5,50 +5,50 @@
  * 若加载失败则回退到内置静态数据。
  */
 
-// 内置静态参考点（仅含 Wikipedia/Wikimedia 素材的点，作为最小兜底）
+// 内置静态参考点（作为 reference-data.json 加载失败时的最小兜底）
 export const REFERENCE_POINTS = [
   {
-    id: "ref-apple-ios-18-4-1",
+    id: "ref-apple-1",
     brand: "Apple",
-    label: "iOS 18.4.1（截图）",
+    label: "apple1.webp",
     x: 88,
     y: 86,
-    imageUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
-    thumbUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
-    sourceUrl: "./assets/reference/apple/ios_18_4_1_settings_like.png",
+    imageUrl: "./assets/reference/apple/apple1.webp",
+    thumbUrl: "./assets/reference/apple/apple1.webp",
+    sourceUrl: "./assets/reference/apple/apple1.webp",
     license: "本地素材",
   },
   {
-    id: "ref-apple-ios-17-lock",
+    id: "ref-apple-2",
     brand: "Apple",
-    label: "iOS 17（锁屏）",
+    label: "apple2.webp",
     x: 78,
     y: 70,
-    imageUrl: "./assets/reference/apple/ios_17_lockscreen.png",
-    thumbUrl: "./assets/reference/apple/ios_17_lockscreen.png",
-    sourceUrl: "./assets/reference/apple/ios_17_lockscreen.png",
+    imageUrl: "./assets/reference/apple/apple2.webp",
+    thumbUrl: "./assets/reference/apple/apple2.webp",
+    sourceUrl: "./assets/reference/apple/apple2.webp",
     license: "本地素材",
   },
   {
-    id: "ref-apple-ios-17-2-kbd-n",
+    id: "ref-apple-3",
     brand: "Apple",
-    label: "iOS 17.2（键盘：Northern Sami）",
+    label: "apple3.jpg",
     x: 82,
     y: 74,
-    imageUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
-    thumbUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
-    sourceUrl: "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
+    imageUrl: "./assets/reference/apple/apple3.jpg",
+    thumbUrl: "./assets/reference/apple/apple3.jpg",
+    sourceUrl: "./assets/reference/apple/apple3.jpg",
     license: "本地素材",
   },
   {
-    id: "ref-apple-ios-17-2-kbd-p",
+    id: "ref-apple-4",
     brand: "Apple",
-    label: "iOS 17.2（键盘：Pite Sami）",
+    label: "apple4.jpg",
     x: 82,
     y: 74,
-    imageUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
-    thumbUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
-    sourceUrl: "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
+    imageUrl: "./assets/reference/apple/apple4.jpg",
+    thumbUrl: "./assets/reference/apple/apple4.jpg",
+    sourceUrl: "./assets/reference/apple/apple4.jpg",
     license: "本地素材",
   },
 ];
@@ -58,52 +58,6 @@ export const REFERENCE_POINTS = [
  * @returns {Promise<Array>} 参考点数组
  */
 export async function loadReferenceData() {
-  // 每个品牌在 frontend/assets/reference/ 下可用的代表性图片
-  const BRAND_REF_IMAGES = {
-    apple:   [
-      "./assets/reference/apple/ios_18_4_1_settings_like.png",
-      "./assets/reference/apple/ios_17_lockscreen.png",
-      "./assets/reference/apple/ios_17_2_keyboard_northern_sami.png",
-      "./assets/reference/apple/ios_17_2_keyboard_pite_sami.png",
-    ],
-    google:  [
-      "./assets/reference/google/android_16_home_emulator.png",
-      "./assets/reference/google/aosp_9_home_foss.png",
-      "./assets/reference/google/pixel4a_google_lens_qr.png",
-    ],
-    huawei:  [
-      "./assets/reference/huawei/mate40pro_harmonyos2.jpg",
-      "./assets/reference/huawei/nova8pro_front.jpg",
-      "./assets/reference/huawei/honor8x_home_screen.jpg",
-      "./assets/reference/huawei/magic_ui_4_2_launcher3.jpg",
-    ],
-    honor:   [
-      "./assets/reference/honor/honor3.webp",
-      "./assets/reference/honor/honor5.webp",
-    ],
-    oppo:    [
-      "./assets/reference/oppo/oppo_a57_lineageos.jpg",
-      "./assets/reference/oppo/oppo_bdp93_booting.jpg",
-      "./assets/reference/oppo/oppo_bdp93_display_logos.jpg",
-    ],
-    xiaomi:  [
-      "./assets/reference/xiaomi/miui_14_about_phone.png",
-      "./assets/reference/xiaomi/miui_v2_home.jpg",
-      "./assets/reference/xiaomi/miui_v5_home.jpg",
-    ],
-    samsung: [
-      "./assets/reference/samsung/samsung3.webp",
-      "./assets/reference/samsung/samsung2.jpg",
-    ],
-    vivo:    [
-      "./assets/reference/vivo/vivo1.webp",
-      "./assets/reference/vivo/vivo5.webp",
-    ],
-  };
-
-  // 每个品牌已分配了多少张（用于轮换图片）
-  const brandIdx = {};
-
   try {
     const res = await fetch("./reference-data.json", { cache: "no-cache" });
     if (!res.ok) return null;
@@ -111,10 +65,8 @@ export async function loadReferenceData() {
     if (!Array.isArray(data) || data.length === 0) return null;
 
     return data.map((d, i) => {
-      const imgs = BRAND_REF_IMAGES[d.brand] || [];
-      const cnt  = brandIdx[d.brand] ?? 0;
-      const imgUrl = imgs.length ? imgs[cnt % imgs.length] : "";
-      brandIdx[d.brand] = cnt + 1;
+      // 直接使用该条目对应的真实截图文件（brand/filename 一一对应）
+      const imgUrl = `./assets/reference/${d.brand}/${d.filename}`;
 
       return {
         id: `ref-${d.brand}-${i}`,
@@ -125,7 +77,7 @@ export async function loadReferenceData() {
         imageUrl: imgUrl,
         thumbUrl: imgUrl,
         sourceUrl: imgUrl,
-        license: imgUrl ? "本地素材" : "",
+        license: "本地素材",
         features: {
           color_score: d.color_score,
           spacing_score: d.spacing_score,

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 
-from app.ai.deepseek_client import DeepSeekClient
+from app.ai.gemini_client import GeminiClient
 from app.ai.schemas import AiExplainRequest, AiExplainResponse
 
 
-SYSTEM = """你是一个极其严谨的移动端 UI/UX 设计评估专家，专门根据 Apple 的 Consistency（一致性）原则做“可执行”的问题诊断。
+SYSTEM = """你是一个极其严谨的移动端 UI/UX 设计评估专家，专门根据 Apple 的 Consistency（一致性）原则做"可执行"的问题诊断。
+如果用户提供了界面截图，请仔细观察截图中的视觉细节（色彩、间距、圆角、文字样式等），将其作为评估证据的重要补充，并在建议中直接引用你在截图中观察到的具体视觉问题。
 你必须：
-- 用结构化方式解释“为什么这是问题”（必须引用输入 evidence 数字/字段名）
+- 用结构化方式解释"为什么这是问题"（必须引用输入 evidence 数字/字段名，或截图中的视觉观察）
 - 给出可以直接照抄的改动建议（必须有明确数值、阈值、或规则；禁止‘适当’‘优化一下’等模糊词）
 - 输出必须是 JSON（不要输出 Markdown）
 """
@@ -60,9 +61,14 @@ def _build_user_prompt(req: AiExplainRequest) -> str:
 
 
 async def explain_with_ai(req: AiExplainRequest) -> AiExplainResponse:
-    client = DeepSeekClient.from_env()
+    client = GeminiClient.from_env()
     user = _build_user_prompt(req)
-    out = await client.chat_json(system=SYSTEM, user=user, max_tokens=1600)
+    out = await client.generate_json(
+        system=SYSTEM,
+        user_text=user,
+        image_data_url=req.image_data_url,   # Gemini 会真正看图
+        max_tokens=2000,
+    )
 
     md = out.get("markdown")
     if not isinstance(md, str) or not md.strip():
