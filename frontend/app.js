@@ -509,6 +509,8 @@ async function initBrandDataset() {
   const brandPoints = computeBrandAverages(out);
   __brandPointById.clear();
   for (const bp of brandPoints) __brandPointById.set(bp.id, bp);
+  // Pass raw 76 points for ellipse computation and background scatter dots
+  scatterChart.setRawPoints(out);
   scatterChart.setBrandPoints(brandPoints);
   renderBrandExamples("");
 

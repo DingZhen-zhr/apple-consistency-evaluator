@@ -612,41 +612,57 @@ class SubMetric(BaseModel):
 
 完整依赖见 `backend/requirements.txt`。
 
-### 9.2 启动步骤
+### 9.2 启动步骤（Windows Conda 环境）
 
-```bash
-# 1. 克隆仓库
-git clone https://github.com/DingZhen-zhr/apple-consistency-evaluator.git
-cd apple-consistency-evaluator
+> **如果只想体验静态功能（评分、散点图、品牌对比）**，直接访问  
+> 👉 https://dingzhen-zhr.github.io/apple-consistency-evaluator/  
+> 无需启动后端，上传截图即可获得得分。
+>
+> **如果需要 AI 增强分析功能**，请按以下步骤在本机启动后端：
 
-# 2. 创建并激活 Python 虚拟环境（推荐）
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
+#### 第一步：激活 conda 环境
 
-# 3. 安装依赖
-cd backend
-pip install -r requirements.txt
-
-# 4. 配置环境变量（AI 解读功能可选）
-# 复制示例文件并填入 DeepSeek API Key
-# 若无 Key，系统会跳过 AI 解读，其余功能正常
-echo "DEEPSEEK_API_KEY=your_key_here" > .env
-
-# 5. 启动后端
-uvicorn app.main:app --reload --port 8000
-# 后端运行在 http://localhost:8000
-# Swagger 文档：http://localhost:8000/docs
-
-# 6. 打开前端
-# 用 VS Code Live Server 扩展或任意静态服务器打开 frontend/index.html
-# 推荐：
-cd ../frontend
-python -m http.server 3000
-# 访问 http://localhost:3000
+```powershell
+# 在 Anaconda Prompt 或 PowerShell 中（需已安装 Anaconda/Miniconda）
+conda activate myenv
 ```
+
+#### 第二步：进入 backend 目录并启动服务
+
+```powershell
+cd "c:\path\to\apple-consistency-evaluator\backend"
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+启动成功后终端会显示：
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+> **提示**：如果报 `ModuleNotFoundError`，先执行：  
+> `pip install -r requirements.txt`
+
+#### 第三步：在网站中配置后端地址
+
+1. 打开 https://dingzhen-zhr.github.io/apple-consistency-evaluator/
+2. 上传截图并点击"开始评估"，等待得分显示
+3. 点击"AI 增强分析"按钮
+4. 弹出输入框后，填入 `http://127.0.0.1:8000`，点击确定
+5. AI 开始分析，结果在几秒内显示
+
+> **地址会自动记忆**：输入一次后，后续点击 AI 按钮无需重新输入，直接调用本机后端。
+>
+> **跨域说明**：后端已配置 CORS，允许来自任意域的请求，无需额外设置。
+
+#### 可选：配置 DeepSeek API Key（AI 分析所需）
+
+```powershell
+# 在 backend 目录下创建 .env 文件
+echo "DEEPSEEK_API_KEY=your_key_here" > .env
+# 重启 uvicorn 使配置生效
+```
+
+若未配置 Key，AI 分析接口会返回错误，但其余得分功能不受影响。
 
 ### 9.3 生成品牌对比图表
 

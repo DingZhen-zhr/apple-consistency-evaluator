@@ -21,6 +21,7 @@ export function createScatterChart(container, options = {}) {
   container.appendChild(inner);
 
   let brandPoints = Array.isArray(options.brandPoints) ? options.brandPoints : [];
+  let rawPoints = [];   // Full reference dataset (76 entries) for ellipses + background dots
   let userPoints = [];
   let selectedId = null;
   let selectedKind = "none";
@@ -43,8 +44,10 @@ export function createScatterChart(container, options = {}) {
 
   // --- Confidence ellipse helpers ---
   function computeBrandEllipses(points) {
+    // Prefer raw points (full dataset) for more accurate ellipses
+    const source = rawPoints.length >= 3 ? rawPoints : points;
     const byBrand = new Map();
-    for (const p of points) {
+    for (const p of source) {
       const brand = p.brand || "Unknown";
       if (!byBrand.has(brand)) byBrand.set(brand, []);
       byBrand.get(brand).push(p);
@@ -199,7 +202,18 @@ export function createScatterChart(container, options = {}) {
       }
     }
 
-    // Confidence ellipses (draw before points)
+    // Raw background dots (tiny, colored by brand) drawn before ellipses
+    for (const rp of rawPoints) {
+      const dc = document.createElementNS(svg.namespaceURI, "circle");
+      dc.setAttribute("cx", String(dataX(rp.x)));
+      dc.setAttribute("cy", String(dataY(rp.y)));
+      dc.setAttribute("r", "2.5");
+      dc.setAttribute("fill", brandColor(rp.brand || "").replace("0.18", "0.55"));
+      dc.setAttribute("pointer-events", "none");
+      svg.appendChild(dc);
+    }
+
+    // Confidence ellipses (draw before brand centroid points)
     const ellipses = computeBrandEllipses(brandPoints || []);
     for (const e of ellipses) {
       const el = document.createElementNS(svg.namespaceURI, "ellipse");
@@ -214,17 +228,7 @@ export function createScatterChart(container, options = {}) {
       el.setAttribute("transform", `rotate(${e.angleDeg} ${e.cx} ${e.cy})`);
       el.setAttribute("opacity", "0.7");
       svg.appendChild(el);
-
-      // Label on ellipse
-      const lbl = document.createElementNS(svg.namespaceURI, "text");
-      lbl.setAttribute("x", String(e.cx));
-      lbl.setAttribute("y", String(e.cy - Math.max(12, e.ry) - 4));
-      lbl.setAttribute("text-anchor", "middle");
-      lbl.setAttribute("fill", brandStroke(e.brand).replace("0.45", "0.8"));
-      lbl.setAttribute("font-size", "9");
-      lbl.setAttribute("font-weight", "600");
-      lbl.textContent = e.brand;
-      svg.appendChild(lbl);
+      // Ellipse label removed — brand identity shown on centroid dot label instead
     }
 
     // Brand points with collision-avoid
@@ -293,13 +297,33 @@ export function createScatterChart(container, options = {}) {
       ring.setAttribute("stroke-width", isSel ? "3.2" : "2.0");
       g.appendChild(ring);
 
-      if (isSel || placed.length <= 8) {
+      // Always show brand label below the centroid dot with a background pill
+      {
+        const labelText = p.brand || p.label || "";
+        const fs = isSel ? 11 : 10;
+        const approxW = labelText.length * fs * 0.63 + 8;
+        const lx = cx - approxW / 2;
+        const ly = cy + (thumb ? 14 : isSel ? 10 : 8) + 3;  // just below the circle
+
+        const bg = document.createElementNS(svg.namespaceURI, "rect");
+        bg.setAttribute("x", String(lx));
+        bg.setAttribute("y", String(ly));
+        bg.setAttribute("width", String(approxW));
+        bg.setAttribute("height", String(fs + 5));
+        bg.setAttribute("rx", "3");
+        bg.setAttribute("fill", "rgba(16,16,24,0.76)");
+        bg.setAttribute("pointer-events", "none");
+        g.appendChild(bg);
+
         const lab = document.createElementNS(svg.namespaceURI, "text");
-        lab.setAttribute("x", String(cx + 14));
-        lab.setAttribute("y", String(cy - 10));
-        lab.setAttribute("fill", "rgba(241,241,246,0.88)");
-        lab.setAttribute("font-size", isSel ? "12" : "10");
-        lab.textContent = p.brand || p.label || "";
+        lab.setAttribute("x", String(cx));
+        lab.setAttribute("y", String(ly + fs + 1));
+        lab.setAttribute("text-anchor", "middle");
+        lab.setAttribute("fill", isSel ? "#ffd60a" : "rgba(241,241,246,0.92)");
+        lab.setAttribute("font-size", String(fs));
+        lab.setAttribute("font-weight", isSel ? "700" : "500");
+        lab.setAttribute("pointer-events", "none");
+        lab.textContent = labelText;
         g.appendChild(lab);
       }
 
@@ -402,6 +426,11 @@ export function createScatterChart(container, options = {}) {
     render();
   }
 
+  function setRawPoints(points) {
+    rawPoints = Array.isArray(points) ? points : [];
+    render();
+  }
+
   function getSelection() {
     return { kind: selectedKind, id: selectedId };
   }
@@ -411,6 +440,7 @@ export function createScatterChart(container, options = {}) {
   return {
     setUserPoints,
     setBrandPoints,
+    setRawPoints,
     getSelection,
     clearSelection(kind = "none") {
       selectedId = null;
