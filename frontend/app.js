@@ -31,6 +31,16 @@ function renderResult(result) {
   confBadge.textContent = confMap[conf] || conf;
   confBadge.className = "confBadge " + (confClass[conf] || "confMed");
 
+  // ── Source badge ──
+  let srcBadge = document.getElementById("sourceBadge");
+  if (!srcBadge) {
+    srcBadge = el("span", "sourceBadge");
+    srcBadge.id = "sourceBadge";
+    srcBadge.title = "评估在浏览器本地完成，无需联网。算法为 JS 实现，与 Python 后端思路相同，结果仅供参考。";
+    srcBadge.textContent = "本地分析";
+    scoreEl.parentNode.insertBefore(srcBadge, confBadge.nextSibling);
+  }
+
   // ── Detection summary ──
   const ds = result.detection_summary || {};
   let detEl = document.getElementById("detectionSummary");
@@ -219,6 +229,11 @@ async function analyze() {
   renderResult(result);
   __lastResult = result;
   __lastPayload = payload;
+
+  // ── Dark mode detection (Item 12) ──
+  if (payload.first_bitmap) {
+    showDarkModeWarning(estimateMeanLuminance(payload.first_bitmap) < 0.40);
+  }
 
   const axes = computeScatterAxes(result);
   let thumbDataUrl = "";
@@ -561,6 +576,12 @@ function computeBrandAverages(examples) {
     const ys = list.map((p) => Number(p.y)).filter((n) => Number.isFinite(n));
     const x = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 50;
     const y = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 50;
+    const xStd = xs.length > 1 ? Math.sqrt(xs.reduce((s, v) => s + (v - x) ** 2, 0) / xs.length) : 0;
+    const yStd = ys.length > 1 ? Math.sqrt(ys.reduce((s, v) => s + (v - y) ** 2, 0) / ys.length) : 0;
+    const xMin = xs.length ? Math.min(...xs) : 0;
+    const xMax = xs.length ? Math.max(...xs) : 100;
+    const yMin = ys.length ? Math.min(...ys) : 0;
+    const yMax = ys.length ? Math.max(...ys) : 100;
     // Use first thumb as brand logo fallback (later can be replaced with real logo assets)
     const thumbUrl = list[0]?.thumbUrl || list[0]?.imageUrl || "";
     out.push({
@@ -569,6 +590,13 @@ function computeBrandAverages(examples) {
       label: brand,
       x: Math.round(x * 10) / 10,
       y: Math.round(y * 10) / 10,
+      xStd: Math.round(xStd * 10) / 10,
+      xMin: Math.round(xMin * 10) / 10,
+      xMax: Math.round(xMax * 10) / 10,
+      yStd: Math.round(yStd * 10) / 10,
+      yMin: Math.round(yMin * 10) / 10,
+      yMax: Math.round(yMax * 10) / 10,
+      n: list.length,
       thumbUrl,
       __examples: list,
     });
@@ -658,6 +686,23 @@ function renderBrandExamples(brand) {
   const points = __computedExamples || [];
   const shown = brand ? points.filter((p) => p.brand === brand) : points;
   mount.innerHTML = "";
+
+  // ── Brand stats bar (Item 9) ──
+  if (brand) {
+    const bp = Array.from(__brandPointById.values()).find((p) => p.brand === brand);
+    if (bp) {
+      const bar = document.createElement("div");
+      bar.className = "brandStatBar";
+      bar.innerHTML =
+        `<strong>${escapeHtml(brand)}</strong> · ${bp.n ?? shown.length} 张` +
+        ` &nbsp;|&nbsp; Clarity: <strong>${bp.x.toFixed(1)} ± ${(bp.xStd || 0).toFixed(1)}</strong>` +
+        ` [${(bp.xMin || 0).toFixed(1)} ~ ${(bp.xMax || 0).toFixed(1)}]` +
+        ` &nbsp;|&nbsp; Consistency: <strong>${bp.y.toFixed(1)} ± ${(bp.yStd || 0).toFixed(1)}</strong>` +
+        ` [${(bp.yMin || 0).toFixed(1)} ~ ${(bp.yMax || 0).toFixed(1)}]`;
+      mount.appendChild(bar);
+    }
+  }
+
   for (const p of shown) {
     const card = document.createElement("div");
     card.className = "refCard";
@@ -843,7 +888,169 @@ async function runAiExplain() {
   __lastResult.ai = data;
 
   if (aiBlock) {
-    aiBlock.innerHTML = `<pre>${escapeHtml(data?.markdown || JSON.stringify(data, null, 2))}</pre>`;
+    renderAiResult(aiBlock, data);
   }
 }
 
+// ── Item 12: Dark mode detection ──────────────────────────────────────────────
+
+/** 采样 bitmap，返回 0~1 亮度均值（sRGB 线性加权）。*/
+function estimateMeanLuminance(bitmap) {
+  const W = Math.min(bitmap.width, 160);
+  const H = Math.min(bitmap.height, 160);
+  const tmpCanvas = document.createElement("canvas");
+  tmpCanvas.width = W;
+  tmpCanvas.height = H;
+  const ctx = tmpCanvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+  }
+  return sum / (d.length / 4) / 255;
+}
+
+/** 控制深色模式警告条的显示/隐藏。*/
+function showDarkModeWarning(isDark) {
+  const w = $("darkModeWarn");
+  if (!w) return;
+  if (isDark) {
+    w.hidden = false;
+    w.textContent = "⚠ 检测到深色模式截图 — 色彩聚类和组件识别对深色背景优化不足，评分仅供参考。";
+  } else {
+    w.hidden = true;
+    w.textContent = "";
+  }
+}
+
+// ── Item 13: Structured AI output rendering ───────────────────────────────────
+
+/** 将 AI 返回的结构化数据渲染为卡片式 UI，降级到 <pre>。*/
+function renderAiResult(container, data) {
+  container.innerHTML = "";
+  const d = data?.data;
+
+  if (!d || typeof d !== "object") {
+    const pre = document.createElement("pre");
+    pre.textContent = data?.markdown || JSON.stringify(data, null, 2);
+    container.appendChild(pre);
+    return;
+  }
+
+  // Summary
+  if (Array.isArray(d.summary) && d.summary.length) {
+    const sec = document.createElement("div");
+    sec.className = "aiSection";
+    const title = document.createElement("div");
+    title.className = "aiSectionTitle";
+    title.textContent = "分析摘要";
+    sec.appendChild(title);
+    const ul = document.createElement("ul");
+    ul.style.cssText = "margin:0;padding-left:18px";
+    for (const s of d.summary) {
+      const li = document.createElement("li");
+      li.style.cssText = "margin-bottom:4px;font-size:13px";
+      li.textContent = s;
+      ul.appendChild(li);
+    }
+    sec.appendChild(ul);
+    container.appendChild(sec);
+  }
+
+  // Axis explanation
+  if (d.axis_explanation) {
+    const sec = document.createElement("div");
+    sec.className = "aiSection";
+    const p = document.createElement("p");
+    p.style.cssText = "margin:0;font-size:13px;color:var(--muted)";
+    p.textContent = d.axis_explanation;
+    sec.appendChild(p);
+    container.appendChild(sec);
+  }
+
+  // Problems
+  if (Array.isArray(d.problems) && d.problems.length) {
+    const sec = document.createElement("div");
+    sec.className = "aiSection";
+    const title = document.createElement("div");
+    title.className = "aiSectionTitle";
+    title.textContent = `发现问题（${d.problems.length} 项）`;
+    sec.appendChild(title);
+    for (const prob of d.problems) {
+      const det = document.createElement("details");
+      det.className = "aiProblemCard";
+      const sum = document.createElement("summary");
+      sum.textContent = prob.title || "问题";
+      if (prob.principle_mapping) {
+        const tag = document.createElement("span");
+        tag.className = "aiPrincipleTag";
+        tag.textContent = prob.principle_mapping;
+        sum.appendChild(tag);
+      }
+      det.appendChild(sum);
+      const body = document.createElement("div");
+      body.className = "aiProblemBody";
+      if (prob.evidence) {
+        const ev = document.createElement("p");
+        ev.style.cssText = "margin:0 0 6px;font-size:13px";
+        ev.textContent = "证据：" + prob.evidence;
+        body.appendChild(ev);
+      }
+      if (prob.why_it_matters) {
+        const why = document.createElement("p");
+        why.style.cssText = "margin:0 0 8px;font-size:12px;color:var(--muted)";
+        why.textContent = "影响：" + prob.why_it_matters;
+        body.appendChild(why);
+      }
+      if (Array.isArray(prob.fixes) && prob.fixes.length) {
+        const fixTitle = document.createElement("div");
+        fixTitle.style.cssText = "font-size:12px;margin-bottom:4px;color:var(--muted)";
+        fixTitle.textContent = "修复建议：";
+        body.appendChild(fixTitle);
+        for (const fix of prob.fixes) {
+          const fixEl = document.createElement("div");
+          fixEl.className = "aiFixItem";
+          fixEl.title = "点击复制";
+          fixEl.textContent = fix;
+          fixEl.addEventListener("click", () => {
+            navigator.clipboard?.writeText(fix).catch(() => {});
+            fixEl.style.opacity = "0.5";
+            setTimeout(() => (fixEl.style.opacity = ""), 600);
+          });
+          body.appendChild(fixEl);
+        }
+      }
+      det.appendChild(body);
+      sec.appendChild(det);
+    }
+    container.appendChild(sec);
+  }
+
+  // What to measure next
+  if (Array.isArray(d.what_to_measure_next) && d.what_to_measure_next.length) {
+    const sec = document.createElement("div");
+    sec.className = "aiSection";
+    const title = document.createElement("div");
+    title.className = "aiSectionTitle";
+    title.textContent = "下一步测量";
+    sec.appendChild(title);
+    const ol = document.createElement("ol");
+    ol.style.cssText = "margin:0;padding-left:18px";
+    for (const s of d.what_to_measure_next) {
+      const li = document.createElement("li");
+      li.style.cssText = "margin-bottom:4px;font-size:13px";
+      li.textContent = s;
+      ol.appendChild(li);
+    }
+    sec.appendChild(ol);
+    container.appendChild(sec);
+  }
+
+  // Fallback: if no structured content, show markdown
+  if (!d.summary?.length && !d.problems?.length) {
+    const pre = document.createElement("pre");
+    pre.textContent = data?.markdown || JSON.stringify(data, null, 2);
+    container.appendChild(pre);
+  }
+}
