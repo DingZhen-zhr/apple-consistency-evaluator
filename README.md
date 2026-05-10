@@ -105,32 +105,41 @@ $$\text{Overall} = 0.4 \times \text{Clarity} + 0.6 \times \text{Consistency}$$
 
 ### 3.3 分析流水线
 
+本系统采用**双层架构**：核心评分完全在浏览器本地完成，后端仅负责可选的 AI 增强解读。
+
 ```
-图像上传
+图像上传（浏览器端）
     │
     ▼
-图像预处理（降噪、归一化、多尺度缩放）
+【主路径 — analyze.js，纯浏览器 JS，无需联网】
+图像解码为 ImageBitmap
     │
-    ├──► ColorConsistencyAnalyzer      ─┐
-    ├──► SpacingGridConsistencyAnalyzer ├── 并行执行，各自输出 features + issues
-    ├──► ComponentStyleAnalyzer        │
-    ├──► TypographyAnalyzer            │
-    └──► VisualRhythmAnalyzer          ─┘
+    ├──► 色彩聚类（K-Means Lab，k=8）          ─┐
+    ├──► 间距检测（Canny + Hough 直线变换）     ├── 并行，各自输出 features + issues
+    ├──► 圆角组件（轮廓分析 + 圆度统计）       │
+    ├──► 排版层级（亮度块聚类）                │
+    └──► 视觉律动感（HOG 方向熵 + 形态学分组）─┘
                 │
                 ▼
-        score_from_features()  ← 加权合成双轴得分
+        score_from_features()   ← 加权合成双轴得分
                 │
                 ▼
-        compute_grade()        ← 映射 S/A/B/C/D
+        compute_grade()         ← 映射 S/A/B/C/D
                 │
                 ▼
-        enrich_with_submetrics() ← 注入子指标说明、公式、解读
+        深色模式检测             ← estimateMeanLuminance()，亮度 < 0.40 显示警告
                 │
                 ▼
-        DeepSeek AI 解读（异步，可选）
+        结果渲染到页面           ← "本地分析"徽章标注来源
+
+【可选路径 — 后端 FastAPI + Gemini 2.0 Flash（需本机启动后端）】
+前端将截图（base64）+ 分析 JSON → POST /api/ai/explain
                 │
-                ▼
-        返回 AnalysisResult JSON
+        Gemini 2.0 Flash 多模态分析（读图 + 结构化数据）
+                │
+        返回结构化 JSON（problems / fixes / summary）
+                │
+        前端渲染为可展开问题卡片（fixes 可一键复制）
 ```
 
 ---
@@ -458,7 +467,22 @@ $$
 - **带状态栏/导航栏的全屏截图**：状态栏的小图标会干扰间距检测
 - **低分辨率截图**（< 375px 宽）：梯度类算法在低分辨率下噪声比升高
 
-### 7.3 重点关注问题列表
+### 7.3 界面功能说明
+
+**品牌统计栏**：在散点图中点击某品牌后，参考画廊上方会显示该品牌的统计摘要，格式为：
+```
+Apple · 46张  |  Clarity: 45.2 ± 11.3 [24.1 ~ 68.0]  |  Consistency: 58.6 ± 9.4 [38.2 ~ 76.5]
+```
+均值 ± 标准差以及 [最小值 ~ 最大值] 帮助判断品牌内部设计质量的稳定性——箱线图的关键统计量直接显示在参考图上方。
+
+**本地分析标注**：结果卡片的分数旁会显示橙色「本地分析」徽章，提示当前评估在浏览器内完成，无任何数据离开本机。
+
+**深色模式检测**：上传截图后，系统自动采样图像亮度（sRGB 加权均值 < 0.40 判定为深色模式），并在评分区上方显示提示：
+> ⚠ 检测到深色模式截图 — 色彩聚类和组件识别对深色背景优化不足，评分仅供参考。
+
+**AI 结构化输出**：AI 增强分析的结果以结构化卡片形式展示（而非大段文字）。每个问题可展开查看证据（Evidence）、影响（Why it matters）和修复建议（Fixes），修复建议支持一键复制到剪贴板；如果后端没有返回结构化数据，则自动降级为 `<pre>` 文本渲染。
+
+### 7.4 重点关注问题列表
 
 系统会输出具体的"问题项（Issues）"，优先级建议：
 
@@ -477,9 +501,9 @@ $$
 
 ```
 personal_work/
-├── backend/                        # FastAPI 后端（Python 3.11）
+├── backend/                        # FastAPI 后端（Python 3.11，可选）
 │   ├── app/
-│   │   ├── analyzers/              # 五个独立 CV 分析器
+│   │   ├── analyzers/              # 五个独立 CV 分析器（Python 参考实现）
 │   │   │   ├── base.py             # 抽象基类 Analyzer
 │   │   │   ├── color_consistency.py
 │   │   │   ├── spacing_grid.py
@@ -487,22 +511,37 @@ personal_work/
 │   │   │   ├── component_style.py
 │   │   │   └── visual_rhythm.py    ★ 本项目新增
 │   │   ├── ai/
-│   │   │   ├── deepseek_client.py  # DeepSeek API 封装
-│   │   │   └── explain.py          # AI 文字解读逻辑
+│   │   │   ├── gemini_client.py    # Gemini 2.0 Flash REST 客户端（多模态）
+│   │   │   ├── explain.py          # AI 增强解读逻辑（结构化 JSON 输出）
+│   │   │   └── schemas.py          # AI 响应 Pydantic Schema
 │   │   ├── core/
 │   │   │   └── config.py           # 全局配置（阈值、权重）
 │   │   ├── scoring.py              # 加权评分 + 评级映射
 │   │   ├── models.py               # Pydantic 数据模型
 │   │   ├── image_utils.py          # 图像预处理工具函数
 │   │   └── main.py                 # FastAPI 入口 + 路由
-│   └── generate_charts.py          # 品牌对比图表生成脚本
-├── frontend/                       # 纯 ES6 前端（无构建工具）
+│   ├── photos/                     # 76 张原始参考截图（不部署到 GitHub Pages）
+│   └── .env                        # API Key（已加入 .gitignore，不提交）
+├── frontend/                       # 纯 ES6 前端（无构建工具，部署为 GitHub Pages）
 │   ├── index.html                  # 单页应用入口
-│   ├── app.js                      # 上传交互 + 结果渲染
+│   ├── app.js                      # 主逻辑：分析编排、散点图、品牌画廊、AI 渲染
+│   ├── analyze.js                  # ★ 核心：100% 浏览器端 JS 分析引擎
 │   ├── scatter-chart.js            # 纯 SVG 散点图组件
 │   ├── metrics.js                  # 指标说明数据
-│   ├── brand-dataset.js            # 品牌参考数据加载
-│   └── reference-data.json         # 76 张预计算参考数据
+│   ├── brand-dataset.js            # 品牌清单加载与分组
+│   ├── reference-points.js         # 品牌散点预置坐标（静态回退）
+│   ├── reference-data.json         # 76 张预计算参考数据（clarity/consistency 等）
+│   ├── styles.css                  # 全局样式
+│   └── assets/
+│       └── reference/              # 76 张截图（8 个品牌文件夹）
+│           ├── apple/              # 46 张（官方截图 + 真机 IMG_xxxx.PNG）
+│           ├── google/             # 3 张
+│           ├── huawei/             # 5 张
+│           ├── honor/              # 5 张
+│           ├── oppo/               # 6 张
+│           ├── samsung/            # 3 张
+│           ├── vivo/               # 5 张
+│           └── xiaomi/             # 3 张
 └── docs/
     └── charts/                     # 自动生成的品牌对比 PNG 图表
 ```
@@ -536,10 +575,12 @@ class SubMetric(BaseModel):
 
 ### 8.3 API 端点
 
+> 注：**核心评分不经过后端**。前端 `analyze.js` 直接在浏览器完成五维度分析。后端仅提供两个端点：
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/analyze` | 上传图片（multipart/form-data），返回完整 `AnalysisResult` JSON |
-| `GET`  | `/health`  | 服务健康检查，返回版本与当前配置 |
+| `POST` | `/api/ai/explain` | 接收截图（base64）+ 分析 JSON，调用 Gemini 2.0 Flash，返回结构化 AI 解读 |
+| `GET`  | `/health`         | 服务健康检查，返回版本与当前配置 |
 
 **`/analyze` 完整响应示例：**
 
@@ -595,8 +636,8 @@ class SubMetric(BaseModel):
 | **FastAPI** | 自动生成 OpenAPI 文档；Pydantic 数据验证；async 支持 AI 并发调用 |
 | **OpenCV（cv2）** | 业界标准 CV 库；Hough/MSER/Canny/Sobel 均有高效实现 |
 | **scikit-learn** | K-Means 聚类稳定可靠，支持 Lab 色彩空间 |
-| **纯 ES6 前端** | 无构建依赖，可直接部署为 GitHub Pages 静态文件；SVG 散点图避免引入图表库 |
-| **DeepSeek API** | 支持中文 UI 术语；API 成本低；响应质量满足课程需求 |
+| **纯 ES6 前端（analyze.js）** | 无构建依赖，五维度算法用 JS 在浏览器端重新实现，无需联网即可评分；SVG 散点图避免引入图表库 |
+| **Gemini 2.0 Flash** | 原生多模态，同时接受图像与文字输入；可直接分析 UI 截图像素细节；速度快、成本低 |
 
 ---
 
@@ -654,15 +695,16 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 >
 > **跨域说明**：后端已配置 CORS，允许来自任意域的请求，无需额外设置。
 
-#### 可选：配置 DeepSeek API Key（AI 分析所需）
+#### 可选：配置 Google API Key（AI 增强分析所需）
 
-```powershell
-# 在 backend 目录下创建 .env 文件
-echo "DEEPSEEK_API_KEY=your_key_here" > .env
-# 重启 uvicorn 使配置生效
+在 `backend/` 目录下创建 `.env` 文件（已加入 `.gitignore`，不会被提交）：
+
+```
+GOOGLE_API_KEY=your_google_api_key_here
+GEMINI_MODEL=gemini-2.0-flash
 ```
 
-若未配置 Key，AI 分析接口会返回错误，但其余得分功能不受影响。
+Key 可在 [Google AI Studio](https://aistudio.google.com/app/apikey) 免费申请。若未配置，AI 增强分析按钮不可用，但五维度评分、散点图、品牌对比等全部功能不受影响。
 
 ### 9.3 生成品牌对比图表
 
@@ -678,8 +720,9 @@ python generate_charts.py
 | 问题 | 可能原因 | 解决方案 |
 |---|---|---|
 | `ModuleNotFoundError: cv2` | OpenCV 未安装 | `pip install opencv-python-headless` |
-| `/analyze` 返回 500 | 图片分辨率过低（< 100px）| 使用正常截图（≥ 375px 宽） |
-| AI 解读部分为 `null` | 无 DeepSeek API Key 或网络问题 | 检查 `.env` 文件；其余得分不受影响 |
+| `/api/ai/explain` 返回 500 | 无 GOOGLE_API_KEY | 检查 `backend/.env` 配置；评分功能不受影响 |
+| AI 分析按钮无响应 | 后端未启动或地址错误 | 确认 uvicorn 运行中；重新输入 `http://127.0.0.1:8000` |
+| 深色截图评分偏低 | 暗色背景影响色彩/排版检测 | 系统已内置深色模式警告提示，属已知局限性 |
 | 中文字体乱码（图表）| 系统缺少中文字体 | Windows 默认已有微软雅黑；macOS 安装 SimHei |
 | CORS 错误 | 前端直接用 `file://` 打开 | 改用 `python -m http.server` 启动静态服务 |
 
@@ -696,7 +739,7 @@ python generate_charts.py
 | HOG 方向熵分析 | **✓**（融合自 B） | ✗ | ✓ |
 | 形态学分组致密度 | **✓**（本方案扩展） | ✗ | 部分（边缘密度） |
 | 多品牌参考对比 | **✓**（76 张参考库） | ✗ | ✗ |
-| AI 文字解读 | **✓**（DeepSeek） | ✗ | ✗ |
+| AI 文字解读 | **✓**（Gemini 2.0 Flash，多模态图像识别） | ✗ | ✗ |
 | 前端可视化 | **✓**（散点图/雷达图/SVG） | 基础表格 | 无前端 |
 | 子指标置信度 | **✓** | ✗ | ✗ |
 | 无需标注数据/训练 | **✓** | ✓ | ✓ |
@@ -763,5 +806,5 @@ python generate_charts.py
 
 ---
 
-*本项目为工业设计专业"信息与交互"课程个人作业，2026 年春季学期。  
-算法设计参考 Apple Human Interface Guidelines，参考截图数据仅供学术研究使用，版权归原品牌所有。*
+*本项目为工业设计专业"信息与交互"课程个人作业，2026 年春夏学期。  
+算法设计参考 Apple Human Interface Guidelines；AI 增强分析由 Google Gemini 2.0 Flash 驱动；参考截图数据仅供学术研究使用，版权归原品牌所有。*
